@@ -12,8 +12,10 @@ export default async function GameReplayPage({
   params: Promise<{ gameId: string }>;
 }) {
   const { gameId } = await params;
-  const replay = getGameReplay(gameId);
-  const models = getModels();
+  const [replay, models] = await Promise.all([
+    getGameReplay(gameId),
+    getModels(),
+  ]);
 
   // If we have full replay data (board + turns), show the interactive replay
   if (replay && replay.turns.length > 0) {
@@ -21,7 +23,7 @@ export default async function GameReplayPage({
   }
 
   // Otherwise show a summary of the game from the games table
-  const games = getGames();
+  const games = await getGames();
   const game = games.find((g) => g.game_id === gameId);
 
   if (!game) {

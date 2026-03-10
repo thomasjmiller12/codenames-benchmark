@@ -1,25 +1,19 @@
-import Database from "better-sqlite3";
-import path from "path";
-import fs from "fs";
+import { createClient, type Client } from "@libsql/client";
 
-const DB_PATH = path.resolve(
-  process.cwd(),
-  "..",
-  "codenames.db"
-);
+let _client: Client | null = null;
 
-let _db: Database.Database | null = null;
+export function getDb(): Client {
+  if (!_client) {
+    const url = process.env.TURSO_DATABASE_URL;
+    const authToken = process.env.TURSO_AUTH_TOKEN;
 
-export function getDb(): Database.Database | null {
-  if (!_db) {
-    if (!fs.existsSync(DB_PATH)) {
-      return null;
-    }
-    try {
-      _db = new Database(DB_PATH, { readonly: true });
-    } catch {
-      return null;
+    if (url) {
+      // Remote Turso database (production / Vercel)
+      _client = createClient({ url, authToken });
+    } else {
+      // Local SQLite file (development)
+      _client = createClient({ url: "file:../codenames.db" });
     }
   }
-  return _db;
+  return _client;
 }

@@ -1,4 +1,5 @@
 import { getDb } from "./db";
+import type { Row } from "@libsql/client";
 import type {
   Model,
   Game,
@@ -20,6 +21,10 @@ import type {
 import { HIDDEN_MODELS } from "./constants";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+function col(row: Row, key: string): unknown {
+  return row[key];
+}
 
 function deriveProvider(modelId: string): string {
   if (modelId.startsWith("anthropic/")) return "Anthropic";
@@ -43,16 +48,12 @@ function deriveDisplayName(row: { display_name: string; model_id: string }): str
 
 // ─── Models ─────────────────────────────────────────────────────────────────
 
-export function getModels(): Model[] {
+export async function getModels(): Promise<Model[]> {
   const db = getDb();
-  if (!db) return [];
 
-  const rows = db.prepare("SELECT * FROM models ORDER BY solo_rating DESC").all() as Record<string, unknown>[];
-
-  // Derive game counts and win counts from actual games table
-  // (models table counters may be stale)
-  const gameStats = db
-    .prepare(
+  const [modelsRes, gameStatsRes, latencyRes, assassinRes] = await Promise.all([
+    db.execute("SELECT * FROM models ORDER BY solo_rating DESC"),
+    db.execute(
       `SELECT
          model_id,
          SUM(CASE WHEN role = 'solo' THEN 1 ELSE 0 END) as solo_games,
@@ -81,14 +82,8 @@ export function getModels(): Model[] {
          FROM games WHERE status = 'completed'
        )
        GROUP BY model_id`
-    )
-    .all() as Record<string, unknown>[];
-
-  const statsMap = new Map(gameStats.map((r) => [r.model_id as string, r]));
-
-  // Avg latency per model from the turns table (combines SM and OP roles)
-  const latencyStats = db
-    .prepare(
+    ),
+    db.execute(
       `SELECT model_id, AVG(latency_ms) as avg_latency_ms
        FROM (
          SELECT sm_model as model_id, sm_latency_ms as latency_ms
@@ -98,14 +93,8 @@ export function getModels(): Model[] {
          FROM turns WHERE op_model IS NOT NULL AND op_latency_ms IS NOT NULL
        )
        GROUP BY model_id`
-    )
-    .all() as Record<string, unknown>[];
-
-  const latencyMap = new Map(latencyStats.map((r) => [r.model_id as string, r]));
-
-  // Assassin win/loss stats per model
-  const assassinStats = db
-    .prepare(
+    ),
+    db.execute(
       `SELECT model_id,
               SUM(CASE WHEN assassin_win = 1 THEN 1 ELSE 0 END) as assassin_wins,
               SUM(CASE WHEN assassin_loss = 1 THEN 1 ELSE 0 END) as assassin_losses
@@ -121,85 +110,84 @@ export function getModels(): Model[] {
          FROM games WHERE status = 'completed'
        )
        GROUP BY model_id`
-    )
-    .all() as Record<string, unknown>[];
+    ),
+  ]);
 
-  const assassinMap = new Map(assassinStats.map((r) => [r.model_id as string, r]));
+  const rows = modelsRes.rows;
+  const statsMap = new Map(gameStatsRes.rows.map((r) => [col(r, "model_id") as string, r]));
+  const latencyMap = new Map(latencyRes.rows.map((r) => [col(r, "model_id") as string, r]));
+  const assassinMap = new Map(assassinRes.rows.map((r) => [col(r, "model_id") as string, r]));
 
-  const visibleRows = rows.filter((row) => !HIDDEN_MODELS.includes(row.model_id as string));
+  const visibleRows = rows.filter((row) => !HIDDEN_MODELS.includes(col(row, "model_id") as string));
 
   return visibleRows.map((row) => {
-    const gs = statsMap.get(row.model_id as string);
-    const ls = latencyMap.get(row.model_id as string);
-    const as_ = assassinMap.get(row.model_id as string);
-    // Prefer actual game counts from games table; fall back to models table
-    const soloGames = (gs?.solo_games as number) ?? (row.solo_games_played as number) ?? 0;
-    const spymasterGames = (gs?.spymaster_games as number) ?? (row.spymaster_games as number) ?? 0;
-    const operativeGames = (gs?.operative_games as number) ?? (row.operative_games as number) ?? 0;
+    const gs = statsMap.get(col(row, "model_id") as string);
+    const ls = latencyMap.get(col(row, "model_id") as string);
+    const as_ = assassinMap.get(col(row, "model_id") as string);
+    const soloGames = (gs ? col(gs, "solo_games") as number : null) ?? (col(row, "solo_games_played") as number) ?? 0;
+    const spymasterGames = (gs ? col(gs, "spymaster_games") as number : null) ?? (col(row, "spymaster_games") as number) ?? 0;
+    const operativeGames = (gs ? col(gs, "operative_games") as number : null) ?? (col(row, "operative_games") as number) ?? 0;
     const totalGames = soloGames + spymasterGames + operativeGames;
-    const totalCost = (gs?.total_cost as number) ?? 0;
+    const totalCost = (gs ? col(gs, "total_cost") as number : null) ?? 0;
 
     return {
-      model_id: row.model_id as string,
-      display_name: deriveDisplayName(row as { display_name: string; model_id: string }),
-      provider: deriveProvider(row.model_id as string),
-      solo_rating: row.solo_rating as number,
+      model_id: col(row, "model_id") as string,
+      display_name: deriveDisplayName({ display_name: col(row, "display_name") as string, model_id: col(row, "model_id") as string }),
+      provider: deriveProvider(col(row, "model_id") as string),
+      solo_rating: col(row, "solo_rating") as number,
       solo_games: soloGames,
-      spymaster_rating: row.spymaster_rating as number,
+      spymaster_rating: col(row, "spymaster_rating") as number,
       spymaster_games: spymasterGames,
-      operative_rating: row.operative_rating as number,
+      operative_rating: col(row, "operative_rating") as number,
       operative_games: operativeGames,
-      solo_wins: (gs?.solo_wins as number) ?? 0,
-      spymaster_wins: (gs?.spymaster_wins as number) ?? 0,
-      operative_wins: (gs?.operative_wins as number) ?? 0,
-      red_wins: (gs?.red_wins as number) ?? 0,
-      red_games: (gs?.red_games as number) ?? 0,
-      blue_wins: (gs?.blue_wins as number) ?? 0,
-      blue_games: (gs?.blue_games as number) ?? 0,
-      assassin_wins: (as_?.assassin_wins as number) ?? 0,
-      assassin_losses: (as_?.assassin_losses as number) ?? 0,
+      solo_wins: (gs ? col(gs, "solo_wins") as number : null) ?? 0,
+      spymaster_wins: (gs ? col(gs, "spymaster_wins") as number : null) ?? 0,
+      operative_wins: (gs ? col(gs, "operative_wins") as number : null) ?? 0,
+      red_wins: (gs ? col(gs, "red_wins") as number : null) ?? 0,
+      red_games: (gs ? col(gs, "red_games") as number : null) ?? 0,
+      blue_wins: (gs ? col(gs, "blue_wins") as number : null) ?? 0,
+      blue_games: (gs ? col(gs, "blue_games") as number : null) ?? 0,
+      assassin_wins: (as_ ? col(as_, "assassin_wins") as number : null) ?? 0,
+      assassin_losses: (as_ ? col(as_, "assassin_losses") as number : null) ?? 0,
       total_cost_usd: totalCost,
       avg_cost_per_game: totalGames > 0 ? totalCost / totalGames : 0,
-      avg_tokens_per_game: (gs?.avg_tokens as number) ?? 0,
-      avg_latency_ms: (ls?.avg_latency_ms as number) ?? 0,
+      avg_tokens_per_game: (gs ? col(gs, "avg_tokens") as number : null) ?? 0,
+      avg_latency_ms: (ls ? col(ls, "avg_latency_ms") as number : null) ?? 0,
     };
   });
 }
 
 // ─── Games ──────────────────────────────────────────────────────────────────
 
-export function getGames(): Game[] {
+export async function getGames(): Promise<Game[]> {
   const db = getDb();
-  if (!db) return [];
 
-  const rows = db
-    .prepare(
-      `SELECT game_id, red_sm_model, red_op_model, blue_sm_model, blue_op_model,
-              mode, winner, win_condition, total_turns, red_remaining, blue_remaining,
-              total_input_tokens, total_output_tokens, total_cost_usd,
-              COALESCE(completed_at, started_at, created_at) as completed_at
-       FROM games
-       WHERE status = 'completed'
-       ORDER BY COALESCE(completed_at, started_at, created_at) DESC`
-    )
-    .all() as Record<string, unknown>[];
+  const res = await db.execute(
+    `SELECT game_id, red_sm_model, red_op_model, blue_sm_model, blue_op_model,
+            mode, winner, win_condition, total_turns, red_remaining, blue_remaining,
+            total_input_tokens, total_output_tokens, total_cost_usd,
+            COALESCE(completed_at, started_at, created_at) as completed_at
+     FROM games
+     WHERE status = 'completed'
+     ORDER BY COALESCE(completed_at, started_at, created_at) DESC`
+  );
 
-  return rows.map((row) => ({
-    game_id: row.game_id as string,
-    red_sm_model: row.red_sm_model as string,
-    red_op_model: (row.red_op_model as string) ?? (row.red_sm_model as string),
-    blue_sm_model: row.blue_sm_model as string,
-    blue_op_model: (row.blue_op_model as string) ?? (row.blue_sm_model as string),
-    mode: (row.mode as "solo" | "collab") ?? "solo",
-    winner: row.winner as "red" | "blue" | null,
-    win_condition: mapWinCondition(row.win_condition as string),
-    total_turns: (row.total_turns as number) ?? 0,
-    red_remaining: (row.red_remaining as number) ?? 0,
-    blue_remaining: (row.blue_remaining as number) ?? 0,
-    total_input_tokens: (row.total_input_tokens as number) ?? 0,
-    total_output_tokens: (row.total_output_tokens as number) ?? 0,
-    total_cost_usd: (row.total_cost_usd as number) ?? 0,
-    completed_at: (row.completed_at as string) ?? "",
+  return res.rows.map((row) => ({
+    game_id: col(row, "game_id") as string,
+    red_sm_model: col(row, "red_sm_model") as string,
+    red_op_model: (col(row, "red_op_model") as string) ?? (col(row, "red_sm_model") as string),
+    blue_sm_model: col(row, "blue_sm_model") as string,
+    blue_op_model: (col(row, "blue_op_model") as string) ?? (col(row, "blue_sm_model") as string),
+    mode: (col(row, "mode") as "solo" | "collab") ?? "solo",
+    winner: col(row, "winner") as "red" | "blue" | null,
+    win_condition: mapWinCondition(col(row, "win_condition") as string),
+    total_turns: (col(row, "total_turns") as number) ?? 0,
+    red_remaining: (col(row, "red_remaining") as number) ?? 0,
+    blue_remaining: (col(row, "blue_remaining") as number) ?? 0,
+    total_input_tokens: (col(row, "total_input_tokens") as number) ?? 0,
+    total_output_tokens: (col(row, "total_output_tokens") as number) ?? 0,
+    total_cost_usd: (col(row, "total_cost_usd") as number) ?? 0,
+    completed_at: (col(row, "completed_at") as string) ?? "",
   }));
 }
 
@@ -212,61 +200,57 @@ function mapWinCondition(wc: string): "all_words" | "assassin" | "turn_limit" {
 
 // ─── Game Replay ────────────────────────────────────────────────────────────
 
-export function getGameReplay(gameId: string): GameReplay | null {
+export async function getGameReplay(gameId: string): Promise<GameReplay | null> {
   const db = getDb();
-  if (!db) return null;
 
-  const game = db
-    .prepare(
-      `SELECT g.*, b.words_json, b.key_card_json, b.starting_team
-       FROM games g
-       LEFT JOIN boards b ON g.board_id = b.board_id
-       WHERE g.game_id = ?`
-    )
-    .get(gameId) as Record<string, unknown> | undefined;
+  const gameRes = await db.execute({
+    sql: `SELECT g.*, b.words_json, b.key_card_json, b.starting_team
+          FROM games g
+          LEFT JOIN boards b ON g.board_id = b.board_id
+          WHERE g.game_id = ?`,
+    args: [gameId],
+  });
 
+  const game = gameRes.rows[0];
   if (!game) return null;
 
-  const turnRows = db
-    .prepare(
-      `SELECT turn_number, team, clue_word, clue_count, guesses_json
-       FROM turns
-       WHERE game_id = ?
-       ORDER BY turn_number`
-    )
-    .all(gameId) as Record<string, unknown>[];
+  const turnRes = await db.execute({
+    sql: `SELECT turn_number, team, clue_word, clue_count, guesses_json
+          FROM turns
+          WHERE game_id = ?
+          ORDER BY turn_number`,
+    args: [gameId],
+  });
 
-  const turns: Turn[] = turnRows.map((t) => ({
-    turn_number: t.turn_number as number,
-    team: t.team as "red" | "blue",
-    clue_word: t.clue_word as string,
-    clue_count: t.clue_count as number,
-    guesses: parseGuesses(t.guesses_json as string),
+  const turns: Turn[] = turnRes.rows.map((t) => ({
+    turn_number: col(t, "turn_number") as number,
+    team: col(t, "team") as "red" | "blue",
+    clue_word: col(t, "clue_word") as string,
+    clue_count: col(t, "clue_count") as number,
+    guesses: parseGuesses(col(t, "guesses_json") as string),
   }));
 
-  const wordsJson = game.words_json as string | null;
-  const keyCardJson = game.key_card_json as string | null;
+  const wordsJson = col(game, "words_json") as string | null;
+  const keyCardJson = col(game, "key_card_json") as string | null;
 
-  if (!wordsJson || !keyCardJson) {
-    return null;
-  }
+  if (!wordsJson || !keyCardJson) return null;
 
   const words = JSON.parse(wordsJson) as string[];
   const keyCard = JSON.parse(keyCardJson) as Record<string, CardType>;
 
   return {
-    game_id: game.game_id as string,
-    red_sm_model: game.red_sm_model as string,
-    red_op_model: (game.red_op_model as string) ?? (game.red_sm_model as string),
-    blue_sm_model: game.blue_sm_model as string,
-    blue_op_model: (game.blue_op_model as string) ?? (game.blue_sm_model as string),
-    winner: game.winner as "red" | "blue" | null,
-    win_condition: mapWinCondition(game.win_condition as string),
-    total_cost_usd: (game.total_cost_usd as number) ?? 0,
+    game_id: col(game, "game_id") as string,
+    red_sm_model: col(game, "red_sm_model") as string,
+    red_op_model: (col(game, "red_op_model") as string) ?? (col(game, "red_sm_model") as string),
+    blue_sm_model: col(game, "blue_sm_model") as string,
+    blue_op_model: (col(game, "blue_op_model") as string) ?? (col(game, "blue_sm_model") as string),
+    winner: col(game, "winner") as "red" | "blue" | null,
+    win_condition: mapWinCondition(col(game, "win_condition") as string),
+    total_cost_usd: (col(game, "total_cost_usd") as number) ?? 0,
     board: {
       words,
       key_card: keyCard,
-      starting_team: (game.starting_team as "RED" | "BLUE") ?? "RED",
+      starting_team: (col(game, "starting_team") as "RED" | "BLUE") ?? "RED",
     },
     turns,
   };
@@ -297,24 +281,21 @@ function mapGuessResult(r: string): Guess["result"] {
 
 // ─── Rating History ─────────────────────────────────────────────────────────
 
-export function getRatingHistory(): RatingHistory[] {
+export async function getRatingHistory(): Promise<RatingHistory[]> {
   const db = getDb();
-  if (!db) return [];
 
-  const rows = db
-    .prepare(
-      `SELECT model_id, rating_type, rating_after as rating,
-              ROW_NUMBER() OVER (PARTITION BY model_id, rating_type ORDER BY recorded_at) as game_number
-       FROM ratings_history
-       ORDER BY model_id, rating_type, recorded_at`
-    )
-    .all() as Record<string, unknown>[];
+  const res = await db.execute(
+    `SELECT model_id, rating_type, rating_after as rating,
+            ROW_NUMBER() OVER (PARTITION BY model_id, rating_type ORDER BY recorded_at) as game_number
+     FROM ratings_history
+     ORDER BY model_id, rating_type, recorded_at`
+  );
 
-  return rows.map((r) => ({
-    model_id: r.model_id as string,
-    game_number: r.game_number as number,
-    rating: r.rating as number,
-    rating_type: r.rating_type as "solo" | "spymaster" | "operative",
+  return res.rows.map((r) => ({
+    model_id: col(r, "model_id") as string,
+    game_number: col(r, "game_number") as number,
+    rating: col(r, "rating") as number,
+    rating_type: col(r, "rating_type") as "solo" | "spymaster" | "operative",
   }));
 }
 
@@ -332,41 +313,44 @@ const EMPTY_STATS = {
   blueWins: 0,
 };
 
-export function getOverallStats() {
+export async function getOverallStats() {
   const db = getDb();
-  if (!db) return EMPTY_STATS;
 
-  const gameStats = db
-    .prepare(
-      `SELECT
-         COUNT(*) as total_games,
-         AVG(total_turns) as avg_turns,
-         SUM(total_cost_usd) as total_cost,
-         SUM(CASE WHEN win_condition = 'all_words_found' THEN 1 ELSE 0 END) as win_all_words,
-         SUM(CASE WHEN win_condition = 'assassin' THEN 1 ELSE 0 END) as win_assassin,
-         SUM(CASE WHEN win_condition = 'turn_limit' THEN 1 ELSE 0 END) as win_turn_limit,
-         SUM(CASE WHEN winner = 'red' THEN 1 ELSE 0 END) as red_wins,
-         SUM(CASE WHEN winner = 'blue' THEN 1 ELSE 0 END) as blue_wins
-       FROM games
-       WHERE status = 'completed'`
-    )
-    .get() as Record<string, unknown>;
+  try {
+    const [gameStatsRes, modelCountRes] = await Promise.all([
+      db.execute(
+        `SELECT
+           COUNT(*) as total_games,
+           AVG(total_turns) as avg_turns,
+           SUM(total_cost_usd) as total_cost,
+           SUM(CASE WHEN win_condition = 'all_words_found' THEN 1 ELSE 0 END) as win_all_words,
+           SUM(CASE WHEN win_condition = 'assassin' THEN 1 ELSE 0 END) as win_assassin,
+           SUM(CASE WHEN win_condition = 'turn_limit' THEN 1 ELSE 0 END) as win_turn_limit,
+           SUM(CASE WHEN winner = 'red' THEN 1 ELSE 0 END) as red_wins,
+           SUM(CASE WHEN winner = 'blue' THEN 1 ELSE 0 END) as blue_wins
+         FROM games
+         WHERE status = 'completed'`
+      ),
+      db.execute("SELECT COUNT(*) as count FROM models"),
+    ]);
 
-  const modelCount = db
-    .prepare("SELECT COUNT(*) as count FROM models")
-    .get() as { count: number };
+    const gs = gameStatsRes.rows[0];
+    const mc = modelCountRes.rows[0];
 
-  return {
-    totalGames: (gameStats.total_games as number) ?? 0,
-    totalModels: modelCount.count,
-    avgTurns: (gameStats.avg_turns as number) ?? 0,
-    totalCost: (gameStats.total_cost as number) ?? 0,
-    winByAllWords: (gameStats.win_all_words as number) ?? 0,
-    winByAssassin: (gameStats.win_assassin as number) ?? 0,
-    winByTurnLimit: (gameStats.win_turn_limit as number) ?? 0,
-    redWins: (gameStats.red_wins as number) ?? 0,
-    blueWins: (gameStats.blue_wins as number) ?? 0,
-  };
+    return {
+      totalGames: (col(gs, "total_games") as number) ?? 0,
+      totalModels: (col(mc, "count") as number) ?? 0,
+      avgTurns: (col(gs, "avg_turns") as number) ?? 0,
+      totalCost: (col(gs, "total_cost") as number) ?? 0,
+      winByAllWords: (col(gs, "win_all_words") as number) ?? 0,
+      winByAssassin: (col(gs, "win_assassin") as number) ?? 0,
+      winByTurnLimit: (col(gs, "win_turn_limit") as number) ?? 0,
+      redWins: (col(gs, "red_wins") as number) ?? 0,
+      blueWins: (col(gs, "blue_wins") as number) ?? 0,
+    };
+  } catch {
+    return EMPTY_STATS;
+  }
 }
 
 // ─── Insights ────────────────────────────────────────────────────────────────
@@ -382,270 +366,254 @@ const EMPTY_INSIGHTS: InsightsData = {
   operativeObedience: [],
 };
 
-export function getInsightsData(): InsightsData {
+export async function getInsightsData(): Promise<InsightsData> {
   const db = getDb();
-  if (!db) return EMPTY_INSIGHTS;
 
-  // Helper: model display info keyed by model_id
-  const modelRows = db
-    .prepare("SELECT model_id, display_name, solo_rating FROM models")
-    .all() as { model_id: string; display_name: string; solo_rating: number }[];
-  const modelMap = new Map(modelRows.map((m) => [m.model_id, m]));
+  try {
+    const [modelRowsRes, firstClueRes, turnsToWinRes, redBlueRes, assassinRes, clueSizeRes, guessRes, comebackRes, obedienceRes] = await Promise.all([
+      db.execute("SELECT model_id, display_name, solo_rating FROM models"),
+      db.execute(
+        `SELECT sm_model as model_id, AVG(clue_count) as avg_cc, COUNT(*) as games
+         FROM turns
+         WHERE turn_number = 1 AND clue_count IS NOT NULL AND sm_model IS NOT NULL
+         GROUP BY sm_model
+         HAVING games >= 3`
+      ),
+      db.execute(
+        `SELECT model_id, AVG(total_turns) as avg_turns, COUNT(*) as wins
+         FROM (
+           SELECT red_sm_model as model_id, total_turns
+           FROM games WHERE status = 'completed' AND winner = 'red'
+           UNION ALL
+           SELECT blue_sm_model as model_id, total_turns
+           FROM games WHERE status = 'completed' AND winner = 'blue'
+         )
+         GROUP BY model_id
+         HAVING wins >= 3`
+      ),
+      db.execute(
+        `SELECT model_id,
+                SUM(CASE WHEN team = 'red' THEN 1 ELSE 0 END) as red_games,
+                SUM(CASE WHEN team = 'red' AND won = 1 THEN 1 ELSE 0 END) as red_wins,
+                SUM(CASE WHEN team = 'blue' THEN 1 ELSE 0 END) as blue_games,
+                SUM(CASE WHEN team = 'blue' AND won = 1 THEN 1 ELSE 0 END) as blue_wins
+         FROM (
+           SELECT red_sm_model as model_id, 'red' as team,
+                  CASE WHEN winner = 'red' THEN 1 ELSE 0 END as won
+           FROM games WHERE status = 'completed'
+           UNION ALL
+           SELECT blue_sm_model as model_id, 'blue' as team,
+                  CASE WHEN winner = 'blue' THEN 1 ELSE 0 END as won
+           FROM games WHERE status = 'completed'
+         )
+         GROUP BY model_id
+         HAVING red_games >= 2 AND blue_games >= 2`
+      ),
+      db.execute(
+        `SELECT model_id,
+                SUM(CASE WHEN win_condition = 'assassin' THEN 1 ELSE 0 END) as assassin_deaths,
+                COUNT(*) as total_games
+         FROM (
+           SELECT red_sm_model as model_id, win_condition
+           FROM games WHERE status = 'completed' AND winner = 'blue'
+           UNION ALL
+           SELECT blue_sm_model as model_id, win_condition
+           FROM games WHERE status = 'completed' AND winner = 'red'
+         )
+         GROUP BY model_id
+         HAVING total_games >= 3`
+      ),
+      db.execute(
+        `SELECT sm_model as model_id,
+                MIN(clue_count, 5) as size,
+                COUNT(*) as cnt
+         FROM turns
+         WHERE sm_model IS NOT NULL AND clue_count IS NOT NULL
+         GROUP BY sm_model, size`
+      ),
+      db.execute(
+        `SELECT op_model as model_id, guesses_json
+         FROM turns
+         WHERE op_model IS NOT NULL AND guesses_json IS NOT NULL`
+      ),
+      db.execute(
+        `SELECT model_id,
+                SUM(won) as comebacks,
+                COUNT(*) as games_behind
+         FROM (
+           SELECT red_sm_model as model_id,
+                  CASE WHEN winner = 'red' THEN 1 ELSE 0 END as won
+           FROM games g
+           JOIN boards b ON g.board_id = b.board_id
+           WHERE g.status = 'completed' AND b.starting_team = 'blue'
+           UNION ALL
+           SELECT blue_sm_model as model_id,
+                  CASE WHEN winner = 'blue' THEN 1 ELSE 0 END as won
+           FROM games g
+           JOIN boards b ON g.board_id = b.board_id
+           WHERE g.status = 'completed' AND b.starting_team = 'red'
+         )
+         GROUP BY model_id
+         HAVING games_behind >= 3`
+      ),
+      db.execute(
+        `SELECT op_model as model_id, guesses_json, clue_count
+         FROM turns
+         WHERE op_model IS NOT NULL AND guesses_json IS NOT NULL AND clue_count IS NOT NULL`
+      ),
+    ]);
 
-  function modelInfo(id: string) {
-    const m = modelMap.get(id);
-    return {
-      model_id: id,
-      display_name: m ? deriveDisplayName(m) : id,
-      solo_rating: m?.solo_rating ?? 1500,
-    };
-  }
+    const modelMap = new Map(modelRowsRes.rows.map((m) => [col(m, "model_id") as string, m]));
 
-  // 1. First Clue Ambition — avg clue_count on turn 1
-  const firstClueRows = db
-    .prepare(
-      `SELECT sm_model as model_id, AVG(clue_count) as avg_cc, COUNT(*) as games
-       FROM turns
-       WHERE turn_number = 1 AND clue_count IS NOT NULL AND sm_model IS NOT NULL
-       GROUP BY sm_model
-       HAVING games >= 3`
-    )
-    .all() as { model_id: string; avg_cc: number; games: number }[];
+    function modelInfo(id: string) {
+      const m = modelMap.get(id);
+      return {
+        model_id: id,
+        display_name: m ? deriveDisplayName({ display_name: col(m, "display_name") as string, model_id: col(m, "model_id") as string }) : id,
+        solo_rating: m ? (col(m, "solo_rating") as number) ?? 1500 : 1500,
+      };
+    }
 
-  const firstClueAmbition: FirstClueAmbition[] = firstClueRows.map((r) => ({
-    ...modelInfo(r.model_id),
-    avg_first_clue_count: r.avg_cc,
-    games: r.games,
-  }));
+    // 1. First Clue Ambition
+    const firstClueAmbition: FirstClueAmbition[] = firstClueRes.rows.map((r) => ({
+      ...modelInfo(col(r, "model_id") as string),
+      avg_first_clue_count: col(r, "avg_cc") as number,
+      games: col(r, "games") as number,
+    }));
 
-  // 2. Turns to Win — avg total_turns for games won, per model (solo mode: sm = op)
-  const turnsToWinRows = db
-    .prepare(
-      `SELECT model_id, AVG(total_turns) as avg_turns, COUNT(*) as wins
-       FROM (
-         SELECT red_sm_model as model_id, total_turns
-         FROM games WHERE status = 'completed' AND winner = 'red'
-         UNION ALL
-         SELECT blue_sm_model as model_id, total_turns
-         FROM games WHERE status = 'completed' AND winner = 'blue'
-       )
-       GROUP BY model_id
-       HAVING wins >= 3`
-    )
-    .all() as { model_id: string; avg_turns: number; wins: number }[];
+    // 2. Turns to Win
+    const turnsToWin: TurnsToWin[] = turnsToWinRes.rows.map((r) => ({
+      ...modelInfo(col(r, "model_id") as string),
+      avg_turns_to_win: col(r, "avg_turns") as number,
+      wins: col(r, "wins") as number,
+    }));
 
-  const turnsToWin: TurnsToWin[] = turnsToWinRows.map((r) => ({
-    ...modelInfo(r.model_id),
-    avg_turns_to_win: r.avg_turns,
-    wins: r.wins,
-  }));
-
-  // 3. Red vs Blue Win Rate
-  const redBlueRows = db
-    .prepare(
-      `SELECT model_id,
-              SUM(CASE WHEN team = 'red' THEN 1 ELSE 0 END) as red_games,
-              SUM(CASE WHEN team = 'red' AND won = 1 THEN 1 ELSE 0 END) as red_wins,
-              SUM(CASE WHEN team = 'blue' THEN 1 ELSE 0 END) as blue_games,
-              SUM(CASE WHEN team = 'blue' AND won = 1 THEN 1 ELSE 0 END) as blue_wins
-       FROM (
-         SELECT red_sm_model as model_id, 'red' as team,
-                CASE WHEN winner = 'red' THEN 1 ELSE 0 END as won
-         FROM games WHERE status = 'completed'
-         UNION ALL
-         SELECT blue_sm_model as model_id, 'blue' as team,
-                CASE WHEN winner = 'blue' THEN 1 ELSE 0 END as won
-         FROM games WHERE status = 'completed'
-       )
-       GROUP BY model_id
-       HAVING red_games >= 2 AND blue_games >= 2`
-    )
-    .all() as {
-    model_id: string;
-    red_games: number;
-    red_wins: number;
-    blue_games: number;
-    blue_wins: number;
-  }[];
-
-  const redBlueWinRate: RedBlueWinRate[] = redBlueRows.map((r) => ({
-    ...modelInfo(r.model_id),
-    red_win_rate: r.red_games > 0 ? r.red_wins / r.red_games : 0,
-    red_games: r.red_games,
-    blue_win_rate: r.blue_games > 0 ? r.blue_wins / r.blue_games : 0,
-    blue_games: r.blue_games,
-  }));
-
-  // 4. Assassin Discipline — rate of assassin deaths per model (as operative)
-  const assassinRows = db
-    .prepare(
-      `SELECT model_id,
-              SUM(CASE WHEN win_condition = 'assassin' THEN 1 ELSE 0 END) as assassin_deaths,
-              COUNT(*) as total_games
-       FROM (
-         SELECT red_sm_model as model_id, win_condition
-         FROM games WHERE status = 'completed' AND winner = 'blue'
-         UNION ALL
-         SELECT blue_sm_model as model_id, win_condition
-         FROM games WHERE status = 'completed' AND winner = 'red'
-       )
-       GROUP BY model_id
-       HAVING total_games >= 3`
-    )
-    .all() as { model_id: string; assassin_deaths: number; total_games: number }[];
-
-  const assassinRate: AssassinRate[] = assassinRows.map((r) => ({
-    ...modelInfo(r.model_id),
-    assassin_deaths: r.assassin_deaths,
-    total_games: r.total_games,
-    assassin_rate: r.total_games > 0 ? r.assassin_deaths / r.total_games : 0,
-  }));
-
-  // 5. Clue Size Distribution — histogram of clue_count per model
-  const clueSizeRows = db
-    .prepare(
-      `SELECT sm_model as model_id,
-              MIN(clue_count, 5) as size,
-              COUNT(*) as cnt
-       FROM turns
-       WHERE sm_model IS NOT NULL AND clue_count IS NOT NULL
-       GROUP BY sm_model, size`
-    )
-    .all() as { model_id: string; size: number; cnt: number }[];
-
-  // Group by model
-  const clueSizeMap = new Map<string, { size: number; count: number }[]>();
-  for (const r of clueSizeRows) {
-    if (!clueSizeMap.has(r.model_id)) clueSizeMap.set(r.model_id, []);
-    clueSizeMap.get(r.model_id)!.push({ size: r.size, count: r.cnt });
-  }
-
-  const clueSizeDistribution: ClueSizeDistribution[] = [];
-  for (const [model_id, dist] of clueSizeMap) {
-    const total = dist.reduce((sum, d) => sum + d.count, 0);
-    if (total < 5) continue;
-    clueSizeDistribution.push({
-      ...modelInfo(model_id),
-      distribution: dist
-        .map((d) => ({ ...d, pct: d.count / total }))
-        .sort((a, b) => a.size - b.size),
-      total_clues: total,
+    // 3. Red vs Blue Win Rate
+    const redBlueWinRate: RedBlueWinRate[] = redBlueRes.rows.map((r) => {
+      const rg = col(r, "red_games") as number;
+      const bg = col(r, "blue_games") as number;
+      return {
+        ...modelInfo(col(r, "model_id") as string),
+        red_win_rate: rg > 0 ? (col(r, "red_wins") as number) / rg : 0,
+        red_games: rg,
+        blue_win_rate: bg > 0 ? (col(r, "blue_wins") as number) / bg : 0,
+        blue_games: bg,
+      };
     });
-  }
 
-  // 6. Guess Accuracy — % of correct guesses per model (as operative)
-  const guessRows = db
-    .prepare(
-      `SELECT op_model as model_id, guesses_json
-       FROM turns
-       WHERE op_model IS NOT NULL AND guesses_json IS NOT NULL`
-    )
-    .all() as { model_id: string; guesses_json: string }[];
+    // 4. Assassin Discipline
+    const assassinRate: AssassinRate[] = assassinRes.rows.map((r) => {
+      const tg = col(r, "total_games") as number;
+      return {
+        ...modelInfo(col(r, "model_id") as string),
+        assassin_deaths: col(r, "assassin_deaths") as number,
+        total_games: tg,
+        assassin_rate: tg > 0 ? (col(r, "assassin_deaths") as number) / tg : 0,
+      };
+    });
 
-  const accMap = new Map<string, { correct: number; total: number }>();
-  for (const r of guessRows) {
-    if (!accMap.has(r.model_id)) accMap.set(r.model_id, { correct: 0, total: 0 });
-    const acc = accMap.get(r.model_id)!;
-    try {
-      const guesses = JSON.parse(r.guesses_json) as { result: string }[];
-      for (const g of guesses) {
-        acc.total++;
-        if (g.result === "CORRECT" || g.result === "HIT") acc.correct++;
+    // 5. Clue Size Distribution
+    const clueSizeMap = new Map<string, { size: number; count: number }[]>();
+    for (const r of clueSizeRes.rows) {
+      const mid = col(r, "model_id") as string;
+      if (!clueSizeMap.has(mid)) clueSizeMap.set(mid, []);
+      clueSizeMap.get(mid)!.push({ size: col(r, "size") as number, count: col(r, "cnt") as number });
+    }
+
+    const clueSizeDistribution: ClueSizeDistribution[] = [];
+    for (const [model_id, dist] of clueSizeMap) {
+      const total = dist.reduce((sum, d) => sum + d.count, 0);
+      if (total < 5) continue;
+      clueSizeDistribution.push({
+        ...modelInfo(model_id),
+        distribution: dist
+          .map((d) => ({ ...d, pct: d.count / total }))
+          .sort((a, b) => a.size - b.size),
+        total_clues: total,
+      });
+    }
+
+    // 6. Guess Accuracy
+    const accMap = new Map<string, { correct: number; total: number }>();
+    for (const r of guessRes.rows) {
+      const mid = col(r, "model_id") as string;
+      if (!accMap.has(mid)) accMap.set(mid, { correct: 0, total: 0 });
+      const acc = accMap.get(mid)!;
+      try {
+        const guesses = JSON.parse(col(r, "guesses_json") as string) as { result: string }[];
+        for (const g of guesses) {
+          acc.total++;
+          if (g.result === "CORRECT" || g.result === "HIT") acc.correct++;
+        }
+      } catch {
+        // skip malformed
       }
-    } catch {
-      // skip malformed
     }
-  }
 
-  const guessAccuracy: GuessAccuracy[] = [];
-  for (const [model_id, acc] of accMap) {
-    if (acc.total < 10) continue;
-    guessAccuracy.push({
-      ...modelInfo(model_id),
-      correct_guesses: acc.correct,
-      total_guesses: acc.total,
-      accuracy: acc.correct / acc.total,
-    });
-  }
-
-  // 7. Comeback Rate — when behind at any point mid-game, how often do they win?
-  // "Behind" = playing as the non-starting team (started with 8 cards, going second)
-  const comebackRows = db
-    .prepare(
-      `SELECT model_id,
-              SUM(won) as comebacks,
-              COUNT(*) as games_behind
-       FROM (
-         SELECT red_sm_model as model_id,
-                CASE WHEN winner = 'red' THEN 1 ELSE 0 END as won
-         FROM games g
-         JOIN boards b ON g.board_id = b.board_id
-         WHERE g.status = 'completed' AND b.starting_team = 'blue'
-         UNION ALL
-         SELECT blue_sm_model as model_id,
-                CASE WHEN winner = 'blue' THEN 1 ELSE 0 END as won
-         FROM games g
-         JOIN boards b ON g.board_id = b.board_id
-         WHERE g.status = 'completed' AND b.starting_team = 'red'
-       )
-       GROUP BY model_id
-       HAVING games_behind >= 3`
-    )
-    .all() as { model_id: string; comebacks: number; games_behind: number }[];
-
-  const comebackRate: ComebackRate[] = comebackRows.map((r) => ({
-    ...modelInfo(r.model_id),
-    comebacks: r.comebacks,
-    games_behind: r.games_behind,
-    comeback_rate: r.games_behind > 0 ? r.comebacks / r.games_behind : 0,
-  }));
-
-  // 8. Operative Obedience — avg guesses used vs max allowed (clue_count + 1)
-  const obedienceRows = db
-    .prepare(
-      `SELECT op_model as model_id, guesses_json, clue_count
-       FROM turns
-       WHERE op_model IS NOT NULL AND guesses_json IS NOT NULL AND clue_count IS NOT NULL`
-    )
-    .all() as { model_id: string; guesses_json: string; clue_count: number }[];
-
-  const obMap = new Map<string, { guesses_sum: number; max_sum: number; count: number }>();
-  for (const r of obedienceRows) {
-    if (!obMap.has(r.model_id)) obMap.set(r.model_id, { guesses_sum: 0, max_sum: 0, count: 0 });
-    const ob = obMap.get(r.model_id)!;
-    try {
-      const guesses = JSON.parse(r.guesses_json) as unknown[];
-      ob.guesses_sum += guesses.length;
-      ob.max_sum += r.clue_count + 1;
-      ob.count++;
-    } catch {
-      // skip
+    const guessAccuracy: GuessAccuracy[] = [];
+    for (const [model_id, acc] of accMap) {
+      if (acc.total < 10) continue;
+      guessAccuracy.push({
+        ...modelInfo(model_id),
+        correct_guesses: acc.correct,
+        total_guesses: acc.total,
+        accuracy: acc.correct / acc.total,
+      });
     }
-  }
 
-  const operativeObedience: OperativeObedience[] = [];
-  for (const [model_id, ob] of obMap) {
-    if (ob.count < 5) continue;
-    const avgUsed = ob.guesses_sum / ob.count;
-    const avgMax = ob.max_sum / ob.count;
-    operativeObedience.push({
-      ...modelInfo(model_id),
-      avg_guesses_used: avgUsed,
-      avg_max_guesses: avgMax,
-      usage_ratio: avgMax > 0 ? avgUsed / avgMax : 0,
+    // 7. Comeback Rate
+    const comebackRate: ComebackRate[] = comebackRes.rows.map((r) => {
+      const gb = col(r, "games_behind") as number;
+      return {
+        ...modelInfo(col(r, "model_id") as string),
+        comebacks: col(r, "comebacks") as number,
+        games_behind: gb,
+        comeback_rate: gb > 0 ? (col(r, "comebacks") as number) / gb : 0,
+      };
     });
+
+    // 8. Operative Obedience
+    const obMap = new Map<string, { guesses_sum: number; max_sum: number; count: number }>();
+    for (const r of obedienceRes.rows) {
+      const mid = col(r, "model_id") as string;
+      if (!obMap.has(mid)) obMap.set(mid, { guesses_sum: 0, max_sum: 0, count: 0 });
+      const ob = obMap.get(mid)!;
+      try {
+        const guesses = JSON.parse(col(r, "guesses_json") as string) as unknown[];
+        ob.guesses_sum += guesses.length;
+        ob.max_sum += (col(r, "clue_count") as number) + 1;
+        ob.count++;
+      } catch {
+        // skip
+      }
+    }
+
+    const operativeObedience: OperativeObedience[] = [];
+    for (const [model_id, ob] of obMap) {
+      if (ob.count < 5) continue;
+      const avgUsed = ob.guesses_sum / ob.count;
+      const avgMax = ob.max_sum / ob.count;
+      operativeObedience.push({
+        ...modelInfo(model_id),
+        avg_guesses_used: avgUsed,
+        avg_max_guesses: avgMax,
+        usage_ratio: avgMax > 0 ? avgUsed / avgMax : 0,
+      });
+    }
+
+    const isVisible = (m: { model_id: string }) => !HIDDEN_MODELS.includes(m.model_id);
+
+    return {
+      firstClueAmbition: firstClueAmbition.filter(isVisible),
+      turnsToWin: turnsToWin.filter(isVisible),
+      redBlueWinRate: redBlueWinRate.filter(isVisible),
+      assassinRate: assassinRate.filter(isVisible),
+      clueSizeDistribution: clueSizeDistribution.filter(isVisible),
+      guessAccuracy: guessAccuracy.filter(isVisible),
+      comebackRate: comebackRate.filter(isVisible),
+      operativeObedience: operativeObedience.filter(isVisible),
+    };
+  } catch {
+    return EMPTY_INSIGHTS;
   }
-
-  const isVisible = (m: { model_id: string }) => !HIDDEN_MODELS.includes(m.model_id);
-
-  return {
-    firstClueAmbition: firstClueAmbition.filter(isVisible),
-    turnsToWin: turnsToWin.filter(isVisible),
-    redBlueWinRate: redBlueWinRate.filter(isVisible),
-    assassinRate: assassinRate.filter(isVisible),
-    clueSizeDistribution: clueSizeDistribution.filter(isVisible),
-    guessAccuracy: guessAccuracy.filter(isVisible),
-    comebackRate: comebackRate.filter(isVisible),
-    operativeObedience: operativeObedience.filter(isVisible),
-  };
 }

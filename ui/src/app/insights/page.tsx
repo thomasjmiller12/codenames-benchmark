@@ -3,7 +3,7 @@ import { InsightsClient } from "./client";
 
 export const dynamic = "force-dynamic";
 
-export default function InsightsPage() {
-  const data = getInsightsData();
+export default async function InsightsPage() {
+  const data = await getInsightsData();
   return <InsightsClient data={data} />;
 }

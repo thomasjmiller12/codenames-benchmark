@@ -3,7 +3,7 @@ import { ComparisonClient } from "./client";
 
 export const dynamic = "force-dynamic";
 
-export default function ComparisonPage() {
-  const models = getModels();
+export default async function ComparisonPage() {
+  const models = await getModels();
   return <ComparisonClient models={models} />;
 }

@@ -31,3 +31,4 @@ Thumbs.db
 
 # Feature logs (local working docs)
 feature-logs/
+.vercel/

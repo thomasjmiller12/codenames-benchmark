@@ -70,6 +70,19 @@ Next.js + React + TypeScript + Tailwind + shadcn/ui. Reads directly from the SQL
 - **Cost tracking**: Per-move token/cost aggregation, tournament-level budget limits
 - **Metadata patching**: Move records are enriched with tokens, latency, and cost after agent decisions
 
+## Git & GitHub
+
+This is a **personal project** hosted on the `thomasjmiller12` GitHub account (not the work account `TMiller0112`).
+
+- **Remote URL**: `git@github-personal:thomasjmiller12/codenames-benchmark.git` — the `github-personal` SSH host alias routes to the correct SSH key automatically
+- **Git identity**: Auto-configured via `includeIf` in `~/.gitconfig` — commits in this repo use `thomasjmiller12@gmail.com`
+- **`gh` CLI**: Before running `gh` commands (create PR, create repo, etc.), switch to the personal account:
+  ```bash
+  gh auth switch --user thomasjmiller12
+  ```
+  Switch back to work after: `gh auth switch --user TMiller0112`
+- **Repo**: https://github.com/thomasjmiller12/codenames-benchmark (public)
+
 ## Environment
 
 - `OPENROUTER_API_KEY` — required for LLM calls (loaded via python-dotenv)

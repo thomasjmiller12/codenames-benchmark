@@ -11,15 +11,17 @@ export default async function ModelDetailPage({
 }) {
   const { modelId } = await params;
   const decodedId = decodeURIComponent(modelId);
-  const models = getModels();
+  const models = await getModels();
   const model = models.find((m) => m.model_id === decodedId);
 
   if (!model) {
     notFound();
   }
 
-  const games = getGames();
-  const ratingHistory = getRatingHistory();
+  const [games, ratingHistory] = await Promise.all([
+    getGames(),
+    getRatingHistory(),
+  ]);
 
   return (
     <ModelDetailClient

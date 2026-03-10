@@ -5,10 +5,12 @@ import { getModels, getGames, getOverallStats } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
-export default function DashboardPage() {
-  const models = getModels();
-  const games = getGames();
-  const overallStats = getOverallStats();
+export default async function DashboardPage() {
+  const [models, games, overallStats] = await Promise.all([
+    getModels(),
+    getGames(),
+    getOverallStats(),
+  ]);
 
   return (
     <div className="space-y-6">

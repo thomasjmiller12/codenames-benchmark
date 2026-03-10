@@ -20,12 +20,12 @@ export const metadata: Metadata = {
   description: "AI models compete in the board game Codenames",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const stats = getOverallStats();
+  const stats = await getOverallStats();
 
   return (
     <html lang="en" className="dark">

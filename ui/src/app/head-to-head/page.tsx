@@ -3,10 +3,12 @@ import { HeadToHeadClient } from "./client";
 
 export const dynamic = "force-dynamic";
 
-export default function HeadToHeadPage() {
-  const models = getModels();
-  const games = getGames();
-  const ratingHistory = getRatingHistory();
+export default async function HeadToHeadPage() {
+  const [models, games, ratingHistory] = await Promise.all([
+    getModels(),
+    getGames(),
+    getRatingHistory(),
+  ]);
 
   return (
     <HeadToHeadClient
