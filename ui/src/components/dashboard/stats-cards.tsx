@@ -15,9 +15,9 @@ interface OverallStats {
 export function StatsCards({ overallStats }: { overallStats: OverallStats }) {
   const stats = [
     {
-      label: "Paired Games",
+      label: "Total Games",
       value: overallStats.totalGames.toString(),
-      sub: `${overallStats.totalPairs} pairs`,
+      sub: `${overallStats.totalPairs} pairs completed`,
       icon: Gamepad2,
       accent: "text-red-400",
       border: "border-l-red-500",
