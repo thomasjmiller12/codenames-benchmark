@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LLM benchmark suite where AI agents compete in the board game Codenames. Models are evaluated by playing as spymaster (giving clues) and operative (guessing words), with Elo and Bradley-Terry ratings tracking performance across tournaments.
+LLM benchmark suite where AI agents compete in the board game Codenames. Models are evaluated by playing as spymaster (giving clues) and operative (guessing words), with Bradley-Terry (Davidson tie extension) ratings and bootstrap confidence intervals tracking performance across tournaments.
 
 ## Commands
 
@@ -17,10 +17,12 @@ pip install -e ".[dev]"   # Install package + dev dependencies (editable)
 ```bash
 codenames play --red-model <model> --blue-model <model>   # Single game
 codenames benchmark --models "model-a,model-b" --games-per-matchup 2  # Tournament
+codenames compute-ratings               # Recompute BT ratings from all games
 codenames leaderboard --mode solo        # View ratings
 codenames stats <model>                  # Model statistics
 codenames replay <game_id>              # Replay a game turn-by-turn
 codenames costs                          # Cost report
+make ratings                             # Shortcut for compute-ratings
 ```
 
 ### Tests
@@ -53,11 +55,11 @@ Strict state machine: `NOT_STARTED → GIVING_CLUE → GUESSING → TURN_ENDED �
 ### Benchmark System (`src/codenames/benchmark/`)
 - **Scheduler**: Generates round-robin or Swiss pairings. Games come in mirrored pairs (same board, swapped sides) for fairness
 - **Runner**: Drives a single game through the state machine, handles clue retries (max 3), guess errors, and fallback forfeits
-- **Tournament**: Orchestrates full experiments — parallel game execution via semaphores, pair-based Elo updates, cost tracking with budget limits
-- **Rating**: Elo with margin-of-victory scaling + Bradley-Terry MLE with bootstrap confidence intervals. Collab mode has separate SM/OP ratings
+- **Tournament**: Orchestrates full experiments — parallel game execution via semaphores, cost tracking with budget limits. Ratings are computed after the tournament (not live)
+- **Rating**: Davidson-extended Bradley-Terry MLE with bootstrap confidence intervals. Ties (1-1 pairs) are modeled explicitly via the Davidson θ parameter. Ratings are batch-computed from all games and expressed on the Elo scale (center=1500). Collab mode has separate SM/OP ratings via decomposed fitting
 
 ### Storage (`src/codenames/storage/`)
-SQLite with WAL mode. `Database` manages connections and schema initialization. `Repository` provides high-level CRUD (models, boards, games, turns, ratings, experiments). Tables: `models`, `experiments`, `boards`, `games`, `turns`, `ratings_history`.
+SQLite with WAL mode. `Database` manages connections and schema initialization. `Repository` provides high-level CRUD (models, boards, games, turns, ratings, experiments). Tables: `models` (with rating + CI columns), `experiments`, `boards`, `games`, `turns`.
 
 ### UI (`ui/`)
 Next.js + React + TypeScript + Tailwind + shadcn/ui. Reads directly from the SQLite database via better-sqlite3 for leaderboards, game replays, and experiment results.
@@ -65,7 +67,7 @@ Next.js + React + TypeScript + Tailwind + shadcn/ui. Reads directly from the SQL
 ## Key Patterns
 
 - **Deterministic seeds everywhere**: Board generation, scheduling, random agents — all seeded for reproducibility
-- **Pair-based scoring**: Two mirrored games on the same board count as one scoring unit (2-0 = win, 1-1 = draw)
+- **Pair-based scoring**: Two mirrored games on the same board count as one scoring unit (2-0 = win, 1-1 = tie, 0-2 = loss). Ties are modeled in BT via Davidson extension
 - **Async throughout**: Agent decisions are async; games run in parallel bounded by semaphores
 - **Cost tracking**: Per-move token/cost aggregation, tournament-level budget limits
 - **Metadata patching**: Move records are enriched with tokens, latency, and cost after agent decisions

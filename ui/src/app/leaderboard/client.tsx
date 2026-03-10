@@ -26,6 +26,12 @@ function getRating(model: Model, type: RatingType) {
     : model.operative_rating;
 }
 
+function getCI(model: Model, type: RatingType): { lower: number; upper: number } {
+  if (type === "solo") return { lower: model.solo_ci_lower, upper: model.solo_ci_upper };
+  if (type === "spymaster") return { lower: model.spymaster_ci_lower, upper: model.spymaster_ci_upper };
+  return { lower: model.operative_ci_lower, upper: model.operative_ci_upper };
+}
+
 function getGames(model: Model, type: RatingType) {
   return type === "solo"
     ? model.solo_games
@@ -40,6 +46,12 @@ function getWins(model: Model, type: RatingType) {
     : type === "spymaster"
     ? model.spymaster_wins
     : model.operative_wins;
+}
+
+function formatCI(rating: number, ci: { lower: number; upper: number }): string {
+  if (ci.lower === ci.upper) return "";
+  const margin = Math.round((ci.upper - ci.lower) / 2);
+  return `\u00B1${margin}`;
 }
 
 const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
@@ -70,7 +82,7 @@ export function LeaderboardClient({ models }: { models: Model[] }) {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Leaderboard</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Model rankings by Elo rating
+            Model rankings by Bradley-Terry rating
           </p>
         </div>
         {ENABLE_ROLE_RATINGS && (
@@ -94,7 +106,7 @@ export function LeaderboardClient({ models }: { models: Model[] }) {
               <TableRow className="border-border/50 hover:bg-transparent">
                 <TableHead className="w-12 pl-6 text-xs">#</TableHead>
                 <TableHead className="text-xs">Model</TableHead>
-                <TableHead className="text-xs">Elo</TableHead>
+                <TableHead className="text-xs">Rating</TableHead>
                 <TableHead className="text-xs">Win Rate</TableHead>
                 <TableHead className="text-xs text-right">Games</TableHead>
                 <TableHead className="text-xs text-right">Assassin W</TableHead>
@@ -106,9 +118,11 @@ export function LeaderboardClient({ models }: { models: Model[] }) {
             <TableBody>
               {sorted.map((model, idx) => {
                 const rating = getRating(model, ratingType);
+                const ci = getCI(model, ratingType);
                 const gamesCount = getGames(model, ratingType);
                 const wins = getWins(model, ratingType);
                 const winRate = gamesCount > 0 ? (wins / gamesCount) * 100 : 0;
+                const ciStr = formatCI(rating, ci);
 
                 return (
                   <TableRow
@@ -142,8 +156,11 @@ export function LeaderboardClient({ models }: { models: Model[] }) {
                         </Badge>
                       </Link>
                     </TableCell>
-                    <TableCell className="font-mono text-base font-bold">
-                      {formatRating(rating)}
+                    <TableCell className="font-mono">
+                      <span className="text-base font-bold">{formatRating(rating)}</span>
+                      {ciStr && (
+                        <span className="text-xs text-muted-foreground ml-1">{ciStr}</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {gamesCount > 0 ? (

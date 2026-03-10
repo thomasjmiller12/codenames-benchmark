@@ -9,10 +9,16 @@ CREATE TABLE IF NOT EXISTS models (
     cost_per_m_output_tokens REAL,
     solo_rating REAL DEFAULT 1500.0,
     solo_games_played INTEGER DEFAULT 0,
+    solo_ci_lower REAL DEFAULT 1500.0,
+    solo_ci_upper REAL DEFAULT 1500.0,
     spymaster_rating REAL DEFAULT 1500.0,
     spymaster_games INTEGER DEFAULT 0,
+    spymaster_ci_lower REAL DEFAULT 1500.0,
+    spymaster_ci_upper REAL DEFAULT 1500.0,
     operative_rating REAL DEFAULT 1500.0,
     operative_games INTEGER DEFAULT 0,
+    operative_ci_lower REAL DEFAULT 1500.0,
+    operative_ci_upper REAL DEFAULT 1500.0,
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -91,18 +97,5 @@ CREATE TABLE IF NOT EXISTS turns (
     created_at TEXT DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS ratings_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    model_id TEXT NOT NULL REFERENCES models(model_id),
-    game_id TEXT REFERENCES games(game_id),
-    rating_type TEXT NOT NULL CHECK(rating_type IN ('solo', 'spymaster', 'operative')),
-    rating_before REAL NOT NULL,
-    rating_after REAL NOT NULL,
-    result REAL NOT NULL,
-    recorded_at TEXT DEFAULT (datetime('now'))
-);
-
 CREATE INDEX IF NOT EXISTS idx_games_experiment ON games(experiment_id);
 CREATE INDEX IF NOT EXISTS idx_turns_game ON turns(game_id);
-CREATE INDEX IF NOT EXISTS idx_ratings_model ON ratings_history(model_id);
-CREATE INDEX IF NOT EXISTS idx_ratings_game ON ratings_history(game_id);

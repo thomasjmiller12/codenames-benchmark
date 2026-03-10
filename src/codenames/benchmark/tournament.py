@@ -1,8 +1,8 @@
 """Tournament runner that orchestrates a full Codenames benchmark.
 
 Generates a schedule, runs games in parallel through the MatchRunner,
-persists results to the database, and maintains live Elo ratings using
-pair-based scoring (mirrored games on the same board, swapped sides).
+and persists results to the database. Ratings are computed separately
+via Bradley-Terry batch fitting after the tournament completes.
 """
 
 from __future__ import annotations
@@ -24,7 +24,6 @@ from ..engine.types import GameOutcome, Team
 from ..llm.client import LLMClient
 from ..storage.database import Database
 from ..storage.repository import Repository
-from .rating import EloCalculator, EloUpdate
 from .runner import MatchConfig, MatchRunner, TeamSetup
 from .scheduler import ScheduledMatch, Scheduler
 
@@ -123,19 +122,8 @@ class TournamentRunner:
     """Orchestrates a full benchmark tournament with parallel execution.
 
     Creates an experiment, generates the schedule, runs games concurrently
-    (bounded by ``max_concurrent``), persists results, and maintains live
-    Elo ratings via pair-based scoring.
-
-    Parameters
-    ----------
-    config:
-        Tournament configuration.
-    llm_client:
-        Shared LLM client for all agent calls.
-    db:
-        Initialised database connection.
-    word_pool:
-        Word pool for board generation.
+    (bounded by ``max_concurrent``), and persists results. Ratings are
+    computed separately after the tournament via Bradley-Terry batch fitting.
     """
 
     def __init__(
@@ -150,7 +138,6 @@ class TournamentRunner:
         self._db = db
         self._repo = Repository(db)
         self._word_pool = word_pool
-        self._elo = EloCalculator()
         self._prompt_builder = PromptBuilder()
         self._model_pricing = config.model_pricing or {}
         self._total_cost = 0.0
@@ -168,18 +155,9 @@ class TournamentRunner:
     async def run(self, experiment_name: str) -> str:
         """Run a full tournament and return the experiment ID.
 
-        Games are executed in parallel (up to ``max_concurrent``).  Elo
-        ratings are updated per mirrored pair, not per individual game.
-
-        Parameters
-        ----------
-        experiment_name:
-            Human-readable name for this experiment run.
-
-        Returns
-        -------
-        str
-            The experiment ID (UUID).
+        Games are executed in parallel (up to ``max_concurrent``).
+        Ratings are NOT updated here — they are computed via
+        Bradley-Terry batch fitting after the tournament.
         """
         experiment_id = str(uuid.uuid4())
 
@@ -235,8 +213,7 @@ class TournamentRunner:
         else:
             raise ValueError(f"Unknown mode: {self._config.mode!r}")
 
-        # Shuffle schedule to avoid Elo path-dependency bias
-        # (seeded for reproducibility)
+        # Shuffle schedule (seeded for reproducibility)
         rng = random.Random(self._config.seed)
         rng.shuffle(schedule)
 
@@ -271,17 +248,12 @@ class TournamentRunner:
 
         def _short_name(model_id: str) -> str:
             """Extract a compact display name from a model ID."""
-            # e.g. 'anthropic/claude-3.5-sonnet' -> 'claude-3.5-sonnet'
             return model_id.rsplit("/", 1)[-1]
 
         def _update_records_for_pair(
             pair: list[tuple[ScheduledMatch, GameResult | None, str]],
         ) -> None:
-            """Update win/loss records once a mirrored pair completes.
-
-            Only counts non-error games so the scoreboard reflects fair,
-            side-balanced results.
-            """
+            """Update win/loss records once a mirrored pair completes."""
             for match, result, _gid in pair:
                 if result is None or result.winner is None:
                     continue
@@ -301,7 +273,6 @@ class TournamentRunner:
             if not model_records:
                 return ""
 
-            # Compute win rates for models with at least one game
             rates: list[tuple[str, float, int, int]] = []
             for mid, (w, l) in model_records.items():
                 total = w + l
@@ -338,12 +309,10 @@ class TournamentRunner:
                 )
 
                 if result is None:
-                    # Budget exceeded — game was saved but we stop
                     return None
 
                 completed_count += 1
 
-                # Check if the game ended due to an error
                 is_error = result.outcome is GameOutcome.ERROR
                 if is_error:
                     self._error_count += 1
@@ -352,8 +321,7 @@ class TournamentRunner:
 
                 if is_error:
                     logger.warning(
-                        "Game %s ended with error (pair %d). "
-                        "It will NOT count toward ratings.",
+                        "Game %s ended with error (pair %d).",
                         game_id,
                         match.pair_id,
                     )
@@ -365,12 +333,11 @@ class TournamentRunner:
                     total_cost_usd=self._total_cost,
                 )
 
-                # Process pair-based scoring (error games passed as None)
-                pair_completed = await self._process_pair_result(
+                # Track pair completion for W-L scoreboard
+                pair_completed = await self._track_pair_completion(
                     match, result if not is_error else None, game_id,
                 )
 
-                # Update W-L scoreboard only when a full mirrored pair completes
                 if pair_completed is not None:
                     _update_records_for_pair(pair_completed)
                     pbar.set_postfix_str(_records_postfix())
@@ -394,8 +361,8 @@ class TournamentRunner:
 
         if self._error_count > 0:
             logger.warning(
-                "Tournament '%s' completed: %d/%d games (%d errors excluded "
-                "from ratings), total cost $%.4f",
+                "Tournament '%s' completed: %d/%d games (%d errors), "
+                "total cost $%.4f",
                 experiment_name,
                 completed_count,
                 total_games,
@@ -420,11 +387,10 @@ class TournamentRunner:
     async def _run_single_game(
         self, match: ScheduledMatch, experiment_id: str
     ) -> tuple[GameResult, str] | tuple[None, str]:
-        """Run one game and persist results (without Elo update).
+        """Run one game and persist results.
 
         Returns ``(GameResult, game_id)`` on success, or ``(None, game_id)``
-        if the budget was exceeded.  Elo updates are deferred to
-        :meth:`_process_pair_result`.
+        if the budget was exceeded.
         """
         game_id = str(uuid.uuid4())
 
@@ -480,8 +446,6 @@ class TournamentRunner:
         )
         runner = MatchRunner(match_config)
 
-        # Run the game — catch any unhandled exceptions so a single
-        # game failure doesn't crash the entire tournament.
         try:
             result = await runner.run()
         except Exception:
@@ -504,7 +468,7 @@ class TournamentRunner:
         game_cost = self._calculate_game_cost(result, match)
         self._total_cost += game_cost
 
-        # Check budget (save the game that pushed us over, but flag to stop)
+        # Check budget
         if (
             self._config.budget_usd is not None
             and self._total_cost > self._config.budget_usd
@@ -523,7 +487,7 @@ class TournamentRunner:
             m.output_tokens for m in result.move_log if m.output_tokens
         )
 
-        # Serialise game log (move log + board state summary)
+        # Serialise game log
         game_log = {
             "move_log": _serialize_move_log(result.move_log),
             "board": {
@@ -540,7 +504,6 @@ class TournamentRunner:
         elif result.winner is Team.BLUE:
             winner_str = "blue"
 
-        # Map outcome to DB win_condition enum
         is_error = result.outcome is GameOutcome.ERROR
         win_condition = _OUTCOME_TO_WIN_CONDITION.get(result.outcome, "error")
 
@@ -633,19 +596,16 @@ class TournamentRunner:
             self._repo.save_turn(turn_data)
 
     # ------------------------------------------------------------------
-    # Pair-based Elo scoring
+    # Pair tracking (for progress display only — no rating updates)
     # ------------------------------------------------------------------
 
-    async def _process_pair_result(
+    async def _track_pair_completion(
         self,
         match: ScheduledMatch,
         result: GameResult | None,
         game_id: str,
     ) -> list[tuple[ScheduledMatch, GameResult | None, str]] | None:
-        """Accumulate a game result and update Elo when a pair completes.
-
-        *result* is ``None`` for error-terminated games.  Such games are
-        stored in the pair list but excluded from Elo scoring.
+        """Track pair completion for the progress display.
 
         Returns the full pair list when a pair completes, or ``None`` if
         the pair is still waiting for its second game.
@@ -659,290 +619,7 @@ class TournamentRunner:
             if len(self._pair_results[pair_id]) < 2:
                 return None
 
-            completed_pair = self._pair_results[pair_id]
-
-            if len(completed_pair) == 2:
-                # Filter out error games (result is None)
-                valid = [
-                    (m, r, gid)
-                    for m, r, gid in self._pair_results[pair_id]
-                    if r is not None
-                ]
-                if len(valid) == 2:
-                    self._update_pair_ratings(valid)
-                elif len(valid) == 1:
-                    # Only one game succeeded — fall back to single-game
-                    # Elo update so we don't discard good data entirely.
-                    m, r, gid = valid[0]
-                    if self._config.mode == "solo":
-                        self._update_single_game_rating_solo(m, r, gid)
-                    logger.info(
-                        "Pair %d: 1 of 2 games errored — using single-game "
-                        "scoring for the successful game.",
-                        pair_id,
-                    )
-                else:
-                    # Both games errored — no ratings update at all
-                    logger.warning(
-                        "Pair %d: both games errored — skipping ratings.",
-                        pair_id,
-                    )
-
-                return completed_pair
-
-    def _update_pair_ratings(
-        self,
-        pair: list[tuple[ScheduledMatch, GameResult, str]],
-    ) -> None:
-        """Score a completed mirrored pair and apply Elo updates.
-
-        Only called with pairs where both games completed successfully
-        (no error games).
-        """
-        (match1, result1, gid1), (match2, result2, gid2) = pair
-
-        if self._config.mode == "solo":
-            self._update_pair_solo(pair)
-        elif self._config.mode == "collab":
-            self._update_pair_collab(pair)
-
-    def _update_pair_solo(
-        self,
-        pair: list[tuple[ScheduledMatch, GameResult, str]],
-    ) -> None:
-        """Pair-based Elo update for solo mode."""
-        # Identify the two models (canonical ordering for consistency)
-        match0 = pair[0][0]
-        models_in_pair = sorted({match0.red_sm_model, match0.blue_sm_model})
-        model_a, model_b = models_in_pair
-
-        a_wins = 0
-        b_wins = 0
-        margins: list[int] = []
-
-        for match, result, _gid in pair:
-            if result.winner is None:
-                continue
-            if result.winner is Team.RED:
-                winner_model = match.red_sm_model
-                margin = result.blue_remaining - result.red_remaining
-            else:
-                winner_model = match.blue_sm_model
-                margin = result.red_remaining - result.blue_remaining
-
-            if winner_model == model_a:
-                a_wins += 1
-                margins.append(margin)
-            else:
-                b_wins += 1
-                margins.append(margin)
-
-        # If nobody won either game (e.g. both hit turn limit), skip
-        if a_wins + b_wins == 0:
-            return
-
-        # Handle case where only one game had a winner (shouldn't happen
-        # normally, but be defensive)
-        if a_wins + b_wins == 1:
-            # Fall back to single-game update
-            for match, result, gid in pair:
-                if result.winner is not None:
-                    self._update_single_game_rating_solo(match, result, gid)
-            return
-
-        # Both games had winners — use pair-based scoring
-        avg_margin = int(sum(margins) / len(margins)) if margins else 0
-
-        model_a_data = self._repo.get_model(model_a) or {}
-        model_b_data = self._repo.get_model(model_b) or {}
-
-        a_update, b_update = self._elo.update_pair(
-            model_a_id=model_a,
-            model_b_id=model_b,
-            model_a_rating=model_a_data.get("solo_rating", 1500.0),
-            model_b_rating=model_b_data.get("solo_rating", 1500.0),
-            model_a_games=model_a_data.get("solo_games_played", 0),
-            model_b_games=model_b_data.get("solo_games_played", 0),
-            a_wins=a_wins,
-            b_wins=b_wins,
-            rating_type="solo",
-            margin=max(avg_margin, 0),
-        )
-
-        # Use the last game_id as the reference for the rating history
-        ref_game_id = pair[-1][2]
-
-        self._repo.update_rating(
-            model_id=a_update.model_id,
-            rating_type="solo",
-            new_rating=a_update.new_rating,
-            game_id=ref_game_id,
-            old_rating=a_update.old_rating,
-            result=a_update.game_result,
-        )
-        self._repo.update_rating(
-            model_id=b_update.model_id,
-            rating_type="solo",
-            new_rating=b_update.new_rating,
-            game_id=ref_game_id,
-            old_rating=b_update.old_rating,
-            result=b_update.game_result,
-        )
-
-        logger.debug(
-            "Pair Elo update (solo): %s %.1f->%.1f, %s %.1f->%.1f "
-            "(a_wins=%d, b_wins=%d)",
-            model_a, a_update.old_rating, a_update.new_rating,
-            model_b, b_update.old_rating, b_update.new_rating,
-            a_wins, b_wins,
-        )
-
-    def _update_single_game_rating_solo(
-        self,
-        match: ScheduledMatch,
-        result: GameResult,
-        game_id: str,
-    ) -> None:
-        """Fallback: single-game Elo update for solo mode."""
-        if result.winner is None:
-            return
-
-        if result.winner is Team.RED:
-            winner_id = match.red_sm_model
-            loser_id = match.blue_sm_model
-            margin = result.blue_remaining - result.red_remaining
-        else:
-            winner_id = match.blue_sm_model
-            loser_id = match.red_sm_model
-            margin = result.red_remaining - result.blue_remaining
-
-        winner_model = self._repo.get_model(winner_id) or {}
-        loser_model = self._repo.get_model(loser_id) or {}
-
-        winner_update, loser_update = self._elo.update(
-            winner_id=winner_id,
-            loser_id=loser_id,
-            winner_rating=winner_model.get("solo_rating", 1500.0),
-            loser_rating=loser_model.get("solo_rating", 1500.0),
-            winner_games=winner_model.get("solo_games_played", 0),
-            loser_games=loser_model.get("solo_games_played", 0),
-            rating_type="solo",
-            margin=margin,
-        )
-
-        self._repo.update_rating(
-            model_id=winner_update.model_id,
-            rating_type="solo",
-            new_rating=winner_update.new_rating,
-            game_id=game_id,
-            old_rating=winner_update.old_rating,
-            result=winner_update.game_result,
-        )
-        self._repo.update_rating(
-            model_id=loser_update.model_id,
-            rating_type="solo",
-            new_rating=loser_update.new_rating,
-            game_id=game_id,
-            old_rating=loser_update.old_rating,
-            result=loser_update.game_result,
-        )
-
-    def _update_pair_collab(
-        self,
-        pair: list[tuple[ScheduledMatch, GameResult, str]],
-    ) -> None:
-        """Pair-based Elo update for collab mode (spymaster + operative)."""
-        match0 = pair[0][0]
-
-        # Identify the two teams — each team is (sm_model, op_model)
-        team_a = (match0.red_sm_model, match0.red_op_model)
-        team_b = (match0.blue_sm_model, match0.blue_op_model)
-
-        # Collect SM and OP models across both teams
-        sm_models = sorted({team_a[0], team_b[0]})
-        op_models = sorted({team_a[1], team_b[1]})
-
-        # Count wins for spymaster role
-        for role, models, rating_type, rating_col, games_col in [
-            ("sm", sm_models, "spymaster", "spymaster_rating", "spymaster_games"),
-            ("op", op_models, "operative", "operative_rating", "operative_games"),
-        ]:
-            model_a, model_b = models
-            a_wins = 0
-            b_wins = 0
-            margins: list[int] = []
-
-            for match, result, _gid in pair:
-                if result.winner is None:
-                    continue
-
-                if role == "sm":
-                    red_model = match.red_sm_model
-                    blue_model = match.blue_sm_model
-                else:
-                    red_model = match.red_op_model
-                    blue_model = match.blue_op_model
-
-                if result.winner is Team.RED:
-                    winner = red_model
-                    margin = result.blue_remaining - result.red_remaining
-                else:
-                    winner = blue_model
-                    margin = result.red_remaining - result.blue_remaining
-
-                if winner == model_a:
-                    a_wins += 1
-                    margins.append(margin)
-                else:
-                    b_wins += 1
-                    margins.append(margin)
-
-            if a_wins + b_wins != 2:
-                continue
-
-            avg_margin = int(sum(margins) / len(margins)) if margins else 0
-
-            model_a_data = self._repo.get_model(model_a) or {}
-            model_b_data = self._repo.get_model(model_b) or {}
-
-            a_update, b_update = self._elo.update_pair(
-                model_a_id=model_a,
-                model_b_id=model_b,
-                model_a_rating=model_a_data.get(rating_col, 1500.0),
-                model_b_rating=model_b_data.get(rating_col, 1500.0),
-                model_a_games=model_a_data.get(games_col, 0),
-                model_b_games=model_b_data.get(games_col, 0),
-                a_wins=a_wins,
-                b_wins=b_wins,
-                rating_type=rating_type,
-                margin=max(avg_margin, 0),
-            )
-
-            ref_game_id = pair[-1][2]
-
-            self._repo.update_rating(
-                model_id=a_update.model_id,
-                rating_type=rating_type,
-                new_rating=a_update.new_rating,
-                game_id=ref_game_id,
-                old_rating=a_update.old_rating,
-                result=a_update.game_result,
-            )
-            self._repo.update_rating(
-                model_id=b_update.model_id,
-                rating_type=rating_type,
-                new_rating=b_update.new_rating,
-                game_id=ref_game_id,
-                old_rating=b_update.old_rating,
-                result=b_update.game_result,
-            )
-
-            logger.debug(
-                "Pair Elo update (%s): %s %.1f->%.1f, %s %.1f->%.1f",
-                rating_type,
-                model_a, a_update.old_rating, a_update.new_rating,
-                model_b, b_update.old_rating, b_update.new_rating,
-            )
+            return self._pair_results[pair_id]
 
     # ------------------------------------------------------------------
     # Cost tracking
@@ -951,24 +628,15 @@ class TournamentRunner:
     def _calculate_game_cost(
         self, result: GameResult, match: ScheduledMatch
     ) -> float:
-        """Sum up costs from all moves in the game.
-
-        Uses ``cost_usd`` on move records if available, otherwise falls
-        back to per-million-token rates from the models table.
-
-        In practice, real costs are backfilled after the experiment by
-        ``backfill_costs.py`` using OpenRouter's generation stats endpoint.
-        """
+        """Sum up costs from all moves in the game."""
         total = 0.0
         for move in result.move_log:
             if move.model_id is None:
                 continue
 
-            # Prefer the direct cost from OpenRouter when available
             if move.cost_usd is not None:
                 total += move.cost_usd
             else:
-                # Fallback: compute from token counts + stored pricing
                 model = self._repo.get_model(move.model_id)
                 if model:
                     input_cost_per_m = model.get("cost_per_m_input_tokens") or 0.0

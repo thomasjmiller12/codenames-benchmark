@@ -1,12 +1,13 @@
 """CLI for the Codenames LLM Benchmark Suite.
 
 Provides commands to play single games, run tournaments, view leaderboards,
-inspect model statistics, replay games, and report costs.
+inspect model statistics, replay games, compute ratings, and report costs.
 
 Usage::
 
     codenames play --red-model "model-a" --blue-model "model-b"
     codenames benchmark --models "model-a,model-b,model-c"
+    codenames compute-ratings
     codenames leaderboard
     codenames stats MODEL_ID
     codenames replay GAME_ID
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import random
 import uuid
@@ -43,6 +45,8 @@ load_dotenv()
 
 app = typer.Typer(name="codenames", help="Codenames LLM Benchmark Suite")
 console = Console()
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +211,137 @@ class _LivePrinter:
 
 
 # ---------------------------------------------------------------------------
+# Rating computation
+# ---------------------------------------------------------------------------
+
+
+def compute_ratings_from_db(
+    repo: Repository,
+    db: Database,
+    n_bootstrap: int = 1000,
+) -> None:
+    """Compute Bradley-Terry ratings from all completed games and save them.
+
+    Reads all completed games, builds pair-based results (win/loss/tie),
+    fits the Davidson-extended Bradley-Terry model with bootstrap CIs,
+    and writes ratings back to the models table.
+    """
+    from codenames.benchmark.rating import BradleyTerry, GameResult as GameResultTuple
+
+    # Fetch all completed games grouped by pair_id
+    cur = db.execute(
+        """
+        SELECT game_id, red_sm_model, red_op_model, blue_sm_model, blue_op_model,
+               mode, winner, pair_id, status
+        FROM games
+        WHERE status = 'completed'
+        ORDER BY pair_id, created_at
+        """
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+
+    if not rows:
+        console.print("[yellow]No completed games found.[/yellow]")
+        return
+
+    # Get all model IDs
+    model_rows = repo.list_models()
+    model_ids = [m["model_id"] for m in model_rows]
+
+    # Group games by pair_id for pair-based scoring
+    pairs: dict[int | None, list[dict]] = {}
+    for row in rows:
+        pid = row.get("pair_id")
+        pairs.setdefault(pid, []).append(row)
+
+    # Build game results for each mode
+    solo_results: list[GameResultTuple] = []
+    games_per_model: dict[str, dict[str, int]] = {}  # model_id -> {rating_type -> count}
+
+    def _count_game(model_id: str, rating_type: str) -> None:
+        games_per_model.setdefault(model_id, {}).setdefault(rating_type, 0)
+        games_per_model[model_id][rating_type] += 1
+
+    for pid, pair_games in pairs.items():
+        if pid is None:
+            # Unpaired games — treat each as a standalone result
+            for g in pair_games:
+                if g["mode"] != "solo":
+                    continue
+                model_a = g["red_sm_model"]
+                model_b = g["blue_sm_model"]
+                _count_game(model_a, "solo")
+                _count_game(model_b, "solo")
+                if g["winner"] == "red":
+                    solo_results.append((model_a, model_b, 1.0))
+                elif g["winner"] == "blue":
+                    solo_results.append((model_a, model_b, 0.0))
+                # No winner (turn_limit with no winner) — skip
+            continue
+
+        # Paired games — determine pair outcome
+        valid_games = [g for g in pair_games if g["status"] == "completed"]
+        solo_games = [g for g in valid_games if g["mode"] == "solo"]
+
+        if len(solo_games) == 2:
+            # Determine the two models in this pair
+            g1, g2 = solo_games
+            models_in_pair = sorted({g1["red_sm_model"], g1["blue_sm_model"]})
+            model_a, model_b = models_in_pair
+
+            a_wins = 0
+            b_wins = 0
+            for g in solo_games:
+                if g["winner"] == "red":
+                    winner = g["red_sm_model"]
+                elif g["winner"] == "blue":
+                    winner = g["blue_sm_model"]
+                else:
+                    continue
+                if winner == model_a:
+                    a_wins += 1
+                else:
+                    b_wins += 1
+
+            _count_game(model_a, "solo")
+            _count_game(model_b, "solo")
+
+            if a_wins == 2:
+                solo_results.append((model_a, model_b, 1.0))
+            elif b_wins == 2:
+                solo_results.append((model_a, model_b, 0.0))
+            elif a_wins == 1 and b_wins == 1:
+                solo_results.append((model_a, model_b, 0.5))
+            # else: both games had no winner — skip
+
+        elif len(solo_games) == 1:
+            # Single valid game in pair — treat as standalone
+            g = solo_games[0]
+            model_a = g["red_sm_model"]
+            model_b = g["blue_sm_model"]
+            _count_game(model_a, "solo")
+            _count_game(model_b, "solo")
+            if g["winner"] == "red":
+                solo_results.append((model_a, model_b, 1.0))
+            elif g["winner"] == "blue":
+                solo_results.append((model_a, model_b, 0.0))
+
+    # Compute BT ratings for solo mode
+    if solo_results:
+        console.print(f"Computing Bradley-Terry ratings from {len(solo_results)} pair results...")
+        bt_ratings = BradleyTerry.fit_with_ci(solo_results, model_ids, n_bootstrap=n_bootstrap)
+        repo.save_bt_ratings(
+            [{"model_id": r.model_id, "rating": r.rating, "ci_lower": r.ci_lower, "ci_upper": r.ci_upper}
+             for r in bt_ratings],
+            "solo",
+        )
+        repo.save_bt_games_played(games_per_model)
+        console.print(f"[green]Saved {len(bt_ratings)} solo ratings.[/green]")
+    else:
+        console.print("[yellow]No solo game results to compute ratings from.[/yellow]")
+
+
+# ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
 
@@ -346,7 +481,7 @@ def benchmark(
 
     Games are run in parallel (up to --max-concurrent) and scored using
     mirrored pairs: each pair of models plays the same board from both
-    sides, and ratings are updated per pair rather than per game.
+    sides. Ratings are computed via Bradley-Terry after the tournament.
     """
     from codenames.benchmark.tournament import TournamentConfig, TournamentRunner
 
@@ -394,8 +529,31 @@ def benchmark(
         experiment_id = asyncio.run(_run_tournament())
 
         console.print(f"\n[dim]Experiment completed: {experiment_id}[/dim]")
+
+        # Compute Bradley-Terry ratings from all games
+        console.print("\n[bold]Computing ratings...[/bold]")
+        compute_ratings_from_db(repo, db)
+
         _display_leaderboard_table(repo, mode)
 
+    finally:
+        db.close()
+
+
+@app.command(name="compute-ratings")
+def compute_ratings_cmd(
+    n_bootstrap: int = typer.Option(1000, "--bootstrap", help="Number of bootstrap resamples for CIs"),
+    db_path: str = typer.Option("codenames.db", "--db", help="Path to the SQLite database"),
+) -> None:
+    """Recompute Bradley-Terry ratings from all completed games.
+
+    Fits the Davidson-extended Bradley-Terry model with bootstrap
+    confidence intervals and updates the models table.
+    """
+    db, repo = _init_db(db_path)
+    try:
+        compute_ratings_from_db(repo, db, n_bootstrap=n_bootstrap)
+        _display_leaderboard_table(repo, "solo")
     finally:
         db.close()
 
@@ -427,6 +585,12 @@ def stats(
             console.print(f"[bold red]Model '{model_id}' not found.[/bold red]")
             raise typer.Exit(code=1)
 
+        solo_ci = ""
+        ci_lo = model_stats.get("solo_ci_lower")
+        ci_hi = model_stats.get("solo_ci_upper")
+        if ci_lo and ci_hi and ci_lo != ci_hi:
+            solo_ci = f" [{ci_lo:.0f} - {ci_hi:.0f}]"
+
         lines = [
             f"[bold]Model:[/bold] {model_stats.get('display_name', model_id)}",
             f"[bold]Model ID:[/bold] {model_stats['model_id']}",
@@ -437,7 +601,7 @@ def stats(
             f"[bold]Win Rate:[/bold] {model_stats.get('win_rate', 0.0):.1%}",
             f"[bold]Avg Turns:[/bold] {model_stats.get('avg_turns', 0)}",
             "",
-            f"[bold]Solo Rating:[/bold] {model_stats.get('solo_rating', 1500.0):.0f} ({model_stats.get('solo_games_played', 0)} games)",
+            f"[bold]Solo Rating:[/bold] {model_stats.get('solo_rating', 1500.0):.0f}{solo_ci} ({model_stats.get('solo_games_played', 0)} games)",
             f"[bold]Spymaster Rating:[/bold] {model_stats.get('spymaster_rating', 1500.0):.0f} ({model_stats.get('spymaster_games', 0)} games)",
             f"[bold]Operative Rating:[/bold] {model_stats.get('operative_rating', 1500.0):.0f} ({model_stats.get('operative_games', 0)} games)",
             "",
@@ -628,16 +792,25 @@ def _display_leaderboard_table(
     table.add_column("Rank", justify="center", width=5)
     table.add_column("Model", justify="left")
     table.add_column("Rating", justify="right", width=8)
+    table.add_column("95% CI", justify="right", width=16)
     table.add_column("Games", justify="right", width=7)
 
     for rank, entry in enumerate(entries, start=1):
         games_played = entry.get("games_played", 0)
         rating = entry.get("rating", 1500.0)
+        ci_lower = entry.get("ci_lower", 1500.0)
+        ci_upper = entry.get("ci_upper", 1500.0)
         display = entry.get("display_name", entry.get("model_id", "?"))
+
+        ci_str = ""
+        if ci_lower != ci_upper:
+            ci_str = f"[{ci_lower:.0f} - {ci_upper:.0f}]"
+
         table.add_row(
             str(rank),
             display,
             f"{rating:.0f}",
+            ci_str,
             str(games_played),
         )
 

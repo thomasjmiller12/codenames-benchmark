@@ -119,13 +119,7 @@ class Repository:
     # ------------------------------------------------------------------
 
     def save_game(self, game_data: dict[str, Any]) -> str:
-        """Insert a new game record and return its ``game_id``.
-
-        *game_data* must include at least ``game_id``, ``red_sm_model``,
-        ``red_op_model``, ``blue_sm_model``, ``blue_op_model``, and ``mode``.
-        Any key whose value is a ``dict`` or ``list`` is automatically
-        serialised to JSON.
-        """
+        """Insert a new game record and return its ``game_id``."""
         data = self._encode_json_fields(game_data)
         columns = ", ".join(data.keys())
         placeholders = ", ".join("?" for _ in data)
@@ -142,11 +136,7 @@ class Repository:
         model_id: str | None = None,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """Query games with optional filters.
-
-        When *model_id* is given the result includes games where the model
-        appears in any of the four player slots.
-        """
+        """Query games with optional filters."""
         clauses: list[str] = []
         params: list[Any] = []
 
@@ -177,12 +167,7 @@ class Repository:
     # ------------------------------------------------------------------
 
     def save_turn(self, turn_data: dict[str, Any]) -> None:
-        """Insert a single turn record.
-
-        *turn_data* must include ``turn_id``, ``game_id``, ``turn_number``,
-        and ``team``.  JSON-serialisable fields (``guesses_json``,
-        ``board_state_json``) are handled automatically.
-        """
+        """Insert a single turn record."""
         data = self._encode_json_fields(turn_data)
         columns = ", ".join(data.keys())
         placeholders = ", ".join("?" for _ in data)
@@ -193,48 +178,62 @@ class Repository:
         self._db.connection.commit()
 
     # ------------------------------------------------------------------
-    # Ratings
+    # Bradley-Terry Ratings
     # ------------------------------------------------------------------
 
-    def update_rating(
+    def save_bt_ratings(
         self,
-        model_id: str,
+        ratings: list[dict[str, Any]],
         rating_type: str,
-        new_rating: float,
-        game_id: str,
-        old_rating: float,
-        result: float,
     ) -> None:
-        """Update the denormalised rating on *models* and append a history record.
+        """Bulk-update model ratings from a batch Bradley-Terry computation.
 
-        *rating_type* must be one of ``'solo'``, ``'spymaster'``, or
-        ``'operative'``.
-        *result* should follow Elo convention (1.0 = win, 0.5 = draw, 0.0 = loss).
+        Each entry in *ratings* should have keys: model_id, rating,
+        ci_lower, ci_upper.
+
+        *rating_type* is one of 'solo', 'spymaster', 'operative'.
         """
-        # Map rating_type to the column names on the models table.
-        rating_col, games_col = {
-            "solo": ("solo_rating", "solo_games_played"),
-            "spymaster": ("spymaster_rating", "spymaster_games"),
-            "operative": ("operative_rating", "operative_games"),
+        rating_col, ci_lower_col, ci_upper_col = {
+            "solo": ("solo_rating", "solo_ci_lower", "solo_ci_upper"),
+            "spymaster": ("spymaster_rating", "spymaster_ci_lower", "spymaster_ci_upper"),
+            "operative": ("operative_rating", "operative_ci_lower", "operative_ci_upper"),
         }[rating_type]
 
-        self._db.execute(
-            f"""
-            UPDATE models
-            SET {rating_col} = ?, {games_col} = {games_col} + 1
-            WHERE model_id = ?
-            """,
-            (new_rating, model_id),
-        )
+        for entry in ratings:
+            self._db.execute(
+                f"""
+                UPDATE models
+                SET {rating_col} = ?,
+                    {ci_lower_col} = ?,
+                    {ci_upper_col} = ?
+                WHERE model_id = ?
+                """,
+                (
+                    entry["rating"],
+                    entry["ci_lower"],
+                    entry["ci_upper"],
+                    entry["model_id"],
+                ),
+            )
+        self._db.connection.commit()
 
-        self._db.execute(
-            """
-            INSERT INTO ratings_history
-                (model_id, game_id, rating_type, rating_before, rating_after, result)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (model_id, game_id, rating_type, old_rating, new_rating, result),
-        )
+    def save_bt_games_played(self, games_played: dict[str, dict[str, int]]) -> None:
+        """Update the games-played counts for each model and rating type.
+
+        *games_played* maps model_id -> {rating_type -> count}.
+        """
+        col_map = {
+            "solo": "solo_games_played",
+            "spymaster": "spymaster_games",
+            "operative": "operative_games",
+        }
+        for model_id, type_counts in games_played.items():
+            for rating_type, count in type_counts.items():
+                col = col_map[rating_type]
+                self._db.execute(
+                    f"UPDATE models SET {col} = ? WHERE model_id = ?",
+                    (count, model_id),
+                )
         self._db.connection.commit()
 
     def get_leaderboard(
@@ -249,10 +248,17 @@ class Repository:
             "operative": ("operative_rating", "operative_games"),
         }[rating_type]
 
+        ci_lower_col, ci_upper_col = {
+            "solo": ("solo_ci_lower", "solo_ci_upper"),
+            "spymaster": ("spymaster_ci_lower", "spymaster_ci_upper"),
+            "operative": ("operative_ci_lower", "operative_ci_upper"),
+        }[rating_type]
+
         cur = self._db.execute(
             f"""
             SELECT model_id, display_name, openrouter_id,
-                   {rating_col} AS rating, {games_col} AS games_played
+                   {rating_col} AS rating, {games_col} AS games_played,
+                   {ci_lower_col} AS ci_lower, {ci_upper_col} AS ci_upper
             FROM models
             ORDER BY {rating_col} DESC
             LIMIT ?
@@ -266,17 +272,11 @@ class Repository:
     # ------------------------------------------------------------------
 
     def get_model_stats(self, model_id: str) -> dict[str, Any]:
-        """Return aggregated statistics for a single model.
-
-        Includes total games, win counts, average turns, and per-role
-        breakdowns.
-        """
+        """Return aggregated statistics for a single model."""
         model = self.get_model(model_id)
         if model is None:
             return {}
 
-        # Total games where the model participated in any slot.
-        # Exclude error games from stats (win counts, averages, etc.)
         cur = self._db.execute(
             """
             SELECT
@@ -319,6 +319,8 @@ class Repository:
             "total_output_tokens": stats.get("total_output_tokens", 0),
             "solo_rating": model.get("solo_rating"),
             "solo_games_played": model.get("solo_games_played"),
+            "solo_ci_lower": model.get("solo_ci_lower"),
+            "solo_ci_upper": model.get("solo_ci_upper"),
             "spymaster_rating": model.get("spymaster_rating"),
             "spymaster_games": model.get("spymaster_games"),
             "operative_rating": model.get("operative_rating"),
@@ -342,16 +344,7 @@ class Repository:
         return experiment_data["experiment_id"]
 
     def update_experiment(self, experiment_id: str, **kwargs: Any) -> None:
-        """Update selected columns on an experiment row.
-
-        Example::
-
-            repo.update_experiment(
-                "exp-001",
-                status="running",
-                total_games_completed=42,
-            )
-        """
+        """Update selected columns on an experiment row."""
         if not kwargs:
             return
         data = self._encode_json_fields(kwargs)

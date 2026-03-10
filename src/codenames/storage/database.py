@@ -50,6 +50,12 @@ class Database:
         migrations = [
             "ALTER TABLE games ADD COLUMN pair_id INTEGER",
             "ALTER TABLE experiments ADD COLUMN total_games_errored INTEGER DEFAULT 0",
+            "ALTER TABLE models ADD COLUMN solo_ci_lower REAL DEFAULT 1500.0",
+            "ALTER TABLE models ADD COLUMN solo_ci_upper REAL DEFAULT 1500.0",
+            "ALTER TABLE models ADD COLUMN spymaster_ci_lower REAL DEFAULT 1500.0",
+            "ALTER TABLE models ADD COLUMN spymaster_ci_upper REAL DEFAULT 1500.0",
+            "ALTER TABLE models ADD COLUMN operative_ci_lower REAL DEFAULT 1500.0",
+            "ALTER TABLE models ADD COLUMN operative_ci_upper REAL DEFAULT 1500.0",
         ]
         for migration in migrations:
             try:

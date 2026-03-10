@@ -29,7 +29,7 @@ class TestDatabase:
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
         )
         table_names = {row["name"] for row in cursor.fetchall()}
-        expected_tables = {"models", "experiments", "boards", "games", "turns", "ratings_history"}
+        expected_tables = {"models", "experiments", "boards", "games", "turns"}
         assert expected_tables.issubset(table_names)
 
     def test_initialize_idempotent(self, tmp_path):
@@ -337,105 +337,61 @@ class TestRepositoryGames:
 # ===========================================================================
 
 
-class TestRepositoryRatings:
-    """Tests for Repository rating operations."""
+class TestRepositoryBTRatings:
+    """Tests for Repository Bradley-Terry rating operations."""
 
-    def _create_game(self, repo, game_id="game-001"):
-        """Helper to create a minimal game record for FK references."""
+    def test_save_bt_ratings_updates_models(self, repo):
+        """save_bt_ratings should update model rating and CI columns."""
         repo.save_model("model-a", "Model A", "provider/a")
         repo.save_model("model-b", "Model B", "provider/b")
-        repo.save_game({
-            "game_id": game_id,
-            "red_sm_model": "model-a",
-            "red_op_model": "model-a",
-            "blue_sm_model": "model-b",
-            "blue_op_model": "model-b",
-            "mode": "solo",
-            "status": "completed",
-        })
 
-    def test_update_rating_changes_model(self, repo):
-        """update_rating should update the model's rating and game count."""
-        self._create_game(repo, "game-001")
-
-        repo.update_rating(
-            model_id="model-a",
-            rating_type="solo",
-            new_rating=1520.0,
-            game_id="game-001",
-            old_rating=1500.0,
-            result=1.0,
+        repo.save_bt_ratings(
+            [
+                {"model_id": "model-a", "rating": 1600.0, "ci_lower": 1550.0, "ci_upper": 1650.0},
+                {"model_id": "model-b", "rating": 1400.0, "ci_lower": 1350.0, "ci_upper": 1450.0},
+            ],
+            "solo",
         )
 
-        model = repo.get_model("model-a")
-        assert model is not None
-        assert model["solo_rating"] == 1520.0
-        assert model["solo_games_played"] == 1
+        model_a = repo.get_model("model-a")
+        assert model_a is not None
+        assert model_a["solo_rating"] == 1600.0
+        assert model_a["solo_ci_lower"] == 1550.0
+        assert model_a["solo_ci_upper"] == 1650.0
 
-    def test_update_rating_increments_games(self, repo):
-        """Multiple update_rating calls should increment the games count."""
+        model_b = repo.get_model("model-b")
+        assert model_b is not None
+        assert model_b["solo_rating"] == 1400.0
+
+    def test_save_bt_ratings_for_spymaster(self, repo):
+        """save_bt_ratings should work for spymaster rating type."""
         repo.save_model("model-a", "Model A", "provider/a")
-        repo.save_model("model-b", "Model B", "provider/b")
 
-        for i in range(3):
-            game_id = f"game-{i}"
-            repo.save_game({
-                "game_id": game_id,
-                "red_sm_model": "model-a",
-                "red_op_model": "model-a",
-                "blue_sm_model": "model-b",
-                "blue_op_model": "model-b",
-                "mode": "solo",
-                "status": "completed",
-            })
-            repo.update_rating(
-                model_id="model-a",
-                rating_type="solo",
-                new_rating=1500.0 + (i + 1) * 10,
-                game_id=game_id,
-                old_rating=1500.0 + i * 10,
-                result=1.0,
-            )
-
-        model = repo.get_model("model-a")
-        assert model is not None
-        assert model["solo_games_played"] == 3
-
-    def test_update_rating_for_spymaster(self, repo):
-        """update_rating should work for spymaster rating type."""
-        self._create_game(repo, "game-001")
-
-        repo.update_rating(
-            model_id="model-a",
-            rating_type="spymaster",
-            new_rating=1550.0,
-            game_id="game-001",
-            old_rating=1500.0,
-            result=1.0,
+        repo.save_bt_ratings(
+            [{"model_id": "model-a", "rating": 1550.0, "ci_lower": 1500.0, "ci_upper": 1600.0}],
+            "spymaster",
         )
 
         model = repo.get_model("model-a")
         assert model is not None
         assert model["spymaster_rating"] == 1550.0
-        assert model["spymaster_games"] == 1
+        assert model["spymaster_ci_lower"] == 1500.0
 
-    def test_update_rating_for_operative(self, repo):
-        """update_rating should work for operative rating type."""
-        self._create_game(repo, "game-001")
+    def test_save_bt_games_played(self, repo):
+        """save_bt_games_played should update game counts."""
+        repo.save_model("model-a", "Model A", "provider/a")
+        repo.save_model("model-b", "Model B", "provider/b")
 
-        repo.update_rating(
-            model_id="model-a",
-            rating_type="operative",
-            new_rating=1480.0,
-            game_id="game-001",
-            old_rating=1500.0,
-            result=0.0,
-        )
+        repo.save_bt_games_played({
+            "model-a": {"solo": 10},
+            "model-b": {"solo": 8},
+        })
 
-        model = repo.get_model("model-a")
-        assert model is not None
-        assert model["operative_rating"] == 1480.0
-        assert model["operative_games"] == 1
+        model_a = repo.get_model("model-a")
+        assert model_a["solo_games_played"] == 10
+
+        model_b = repo.get_model("model-b")
+        assert model_b["solo_games_played"] == 8
 
 
 # ===========================================================================
@@ -464,22 +420,15 @@ class TestRepositoryLeaderboard:
         repo.save_model("model-b", "Model B", "provider/b")
         repo.save_model("model-c", "Model C", "provider/c")
 
-        # Create game records for FK references
-        for gid in ["g1", "g2", "g3"]:
-            repo.save_game({
-                "game_id": gid,
-                "red_sm_model": "model-a",
-                "red_op_model": "model-a",
-                "blue_sm_model": "model-b",
-                "blue_op_model": "model-b",
-                "mode": "solo",
-                "status": "completed",
-            })
-
-        # Update ratings so we have a clear ordering
-        repo.update_rating("model-a", "solo", 1600.0, "g1", 1500.0, 1.0)
-        repo.update_rating("model-b", "solo", 1400.0, "g2", 1500.0, 0.0)
-        repo.update_rating("model-c", "solo", 1550.0, "g3", 1500.0, 1.0)
+        # Update ratings via BT batch
+        repo.save_bt_ratings(
+            [
+                {"model_id": "model-a", "rating": 1600.0, "ci_lower": 1550.0, "ci_upper": 1650.0},
+                {"model_id": "model-b", "rating": 1400.0, "ci_lower": 1350.0, "ci_upper": 1450.0},
+                {"model_id": "model-c", "rating": 1550.0, "ci_lower": 1500.0, "ci_upper": 1600.0},
+            ],
+            "solo",
+        )
 
         leaderboard = repo.get_leaderboard(rating_type="solo", limit=10)
         assert len(leaderboard) == 3
@@ -505,25 +454,21 @@ class TestRepositoryLeaderboard:
         repo.save_model("model-a", "Model A", "provider/a")
         repo.save_model("model-b", "Model B", "provider/b")
 
-        for gid in ["g1", "g2"]:
-            repo.save_game({
-                "game_id": gid,
-                "red_sm_model": "model-a",
-                "red_op_model": "model-a",
-                "blue_sm_model": "model-b",
-                "blue_op_model": "model-b",
-                "mode": "solo",
-                "status": "completed",
-            })
-
-        repo.update_rating("model-a", "solo", 1520.0, "g1", 1500.0, 1.0)
-        repo.update_rating("model-a", "solo", 1540.0, "g2", 1520.0, 1.0)
+        repo.save_bt_ratings(
+            [
+                {"model_id": "model-a", "rating": 1540.0, "ci_lower": 1500.0, "ci_upper": 1580.0},
+                {"model_id": "model-b", "rating": 1460.0, "ci_lower": 1420.0, "ci_upper": 1500.0},
+            ],
+            "solo",
+        )
+        repo.save_bt_games_played({"model-a": {"solo": 2}, "model-b": {"solo": 2}})
 
         leaderboard = repo.get_leaderboard(rating_type="solo", limit=10)
         assert len(leaderboard) == 2
-        # model-a should be first (higher rating)
         assert leaderboard[0]["model_id"] == "model-a"
         assert leaderboard[0]["games_played"] == 2
+        assert leaderboard[0]["ci_lower"] == 1500.0
+        assert leaderboard[0]["ci_upper"] == 1580.0
 
 
 # ===========================================================================

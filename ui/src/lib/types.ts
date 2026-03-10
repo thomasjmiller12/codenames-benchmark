@@ -4,10 +4,16 @@ export interface Model {
   provider: string;
   solo_rating: number;
   solo_games: number;
+  solo_ci_lower: number;
+  solo_ci_upper: number;
   spymaster_rating: number;
   spymaster_games: number;
+  spymaster_ci_lower: number;
+  spymaster_ci_upper: number;
   operative_rating: number;
   operative_games: number;
+  operative_ci_lower: number;
+  operative_ci_upper: number;
   solo_wins: number;
   spymaster_wins: number;
   operative_wins: number;
@@ -17,6 +23,9 @@ export interface Model {
   blue_games: number;
   assassin_wins: number;
   assassin_losses: number;
+  pair_sweeps: number;
+  pair_splits: number;
+  pair_losses: number;
   total_cost_usd: number;
   avg_cost_per_game: number;
   avg_tokens_per_game: number;
