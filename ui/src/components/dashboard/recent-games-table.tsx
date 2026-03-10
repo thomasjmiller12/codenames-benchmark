@@ -9,8 +9,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { PairResultBadge } from "@/components/pair-result-badge";
 import { Play } from "lucide-react";
 import { formatDateTime, formatCost, getModelDisplayName } from "@/lib/format";
+import { buildPairMap, getPairResultGeneric } from "@/lib/pairs";
 import type { Game, Model } from "@/lib/types";
 
 export function RecentGamesTable({
@@ -34,6 +36,8 @@ export function RecentGamesTable({
       </Card>
     );
   }
+
+  const pairMap = buildPairMap(games);
 
   // Show recent games between top-rated models (top half by solo Elo)
   const sortedModels = [...models].sort((a, b) => b.solo_rating - a.solo_rating);
@@ -60,6 +64,7 @@ export function RecentGamesTable({
               <TableHead className="text-xs">Red Team</TableHead>
               <TableHead className="text-xs">Blue Team</TableHead>
               <TableHead className="text-xs">Result</TableHead>
+              <TableHead className="text-xs">Pair</TableHead>
               <TableHead className="text-xs">Condition</TableHead>
               <TableHead className="text-xs text-right">Turns</TableHead>
               <TableHead className="text-xs text-right">Cost</TableHead>
@@ -67,72 +72,85 @@ export function RecentGamesTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {recent.map((game) => (
-              <TableRow
-                key={game.game_id}
-                className="border-border/30 cursor-pointer transition-colors hover:bg-accent/30"
-              >
-                <TableCell className="pl-6 text-xs text-muted-foreground font-mono">
-                  <Link href={`/games/${game.game_id}`} className="block">
-                    {formatDateTime(game.completed_at)}
-                  </Link>
-                </TableCell>
-                <TableCell className="text-sm">
-                  <Link href={`/games/${game.game_id}`} className="flex items-center">
-                    <span className="inline-block h-2 w-2 rounded-full bg-red-500 mr-2" />
-                    {getModelDisplayName(game.red_sm_model, models)}
-                  </Link>
-                </TableCell>
-                <TableCell className="text-sm">
-                  <Link href={`/games/${game.game_id}`} className="flex items-center">
-                    <span className="inline-block h-2 w-2 rounded-full bg-blue-500 mr-2" />
-                    {getModelDisplayName(game.blue_sm_model, models)}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  <Link href={`/games/${game.game_id}`} className="block">
-                    <Badge
-                      variant="outline"
-                      className={
-                        game.winner === "red"
-                          ? "border-red-500/40 bg-red-500/10 text-red-400"
-                          : "border-blue-500/40 bg-blue-500/10 text-blue-400"
-                      }
+            {recent.map((game) => {
+              const pairResult = getPairResultGeneric(game, pairMap);
+
+              return (
+                <TableRow
+                  key={game.game_id}
+                  className="border-border/30 cursor-pointer transition-colors hover:bg-accent/30"
+                >
+                  <TableCell className="pl-6 text-xs text-muted-foreground font-mono">
+                    <Link href={`/games/${game.game_id}`} className="block">
+                      {formatDateTime(game.completed_at)}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    <Link href={`/games/${game.game_id}`} className="flex items-center">
+                      <span className="inline-block h-2 w-2 rounded-full bg-red-500 mr-2" />
+                      {getModelDisplayName(game.red_sm_model, models)}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    <Link href={`/games/${game.game_id}`} className="flex items-center">
+                      <span className="inline-block h-2 w-2 rounded-full bg-blue-500 mr-2" />
+                      {getModelDisplayName(game.blue_sm_model, models)}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <Link href={`/games/${game.game_id}`} className="block">
+                      <Badge
+                        variant="outline"
+                        className={
+                          game.winner === "red"
+                            ? "border-red-500/40 bg-red-500/10 text-red-400"
+                            : "border-blue-500/40 bg-blue-500/10 text-blue-400"
+                        }
+                      >
+                        {game.winner === "red" ? "Red" : "Blue"} wins
+                      </Badge>
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <Link href={`/games/${game.game_id}`} className="block">
+                      {pairResult ? (
+                        <PairResultBadge label={pairResult.label} variant={pairResult.variant} />
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground/50">unpaired</span>
+                      )}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    <Link href={`/games/${game.game_id}`} className="block">
+                      {game.win_condition === "all_words"
+                        ? "All words"
+                        : game.win_condition === "assassin"
+                        ? "Assassin"
+                        : "Turn limit"}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-right text-sm font-mono">
+                    <Link href={`/games/${game.game_id}`} className="block">
+                      {game.total_turns}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-right text-sm font-mono text-muted-foreground">
+                    <Link href={`/games/${game.game_id}`} className="block">
+                      {formatCost(game.total_cost_usd)}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-right pr-6">
+                    <Link
+                      href={`/games/${game.game_id}`}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
                     >
-                      {game.winner === "red" ? "Red" : "Blue"} wins
-                    </Badge>
-                  </Link>
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  <Link href={`/games/${game.game_id}`} className="block">
-                    {game.win_condition === "all_words"
-                      ? "All words"
-                      : game.win_condition === "assassin"
-                      ? "Assassin"
-                      : "Turn limit"}
-                  </Link>
-                </TableCell>
-                <TableCell className="text-right text-sm font-mono">
-                  <Link href={`/games/${game.game_id}`} className="block">
-                    {game.total_turns}
-                  </Link>
-                </TableCell>
-                <TableCell className="text-right text-sm font-mono text-muted-foreground">
-                  <Link href={`/games/${game.game_id}`} className="block">
-                    {formatCost(game.total_cost_usd)}
-                  </Link>
-                </TableCell>
-                <TableCell className="text-right pr-6">
-                  <Link
-                    href={`/games/${game.game_id}`}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
-                  >
-                    <Play className="h-3 w-3 fill-current" />
-                    Replay
-                  </Link>
-                </TableCell>
-              </TableRow>
-            ))}
+                      <Play className="h-3 w-3 fill-current" />
+                      Replay
+                    </Link>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </CardContent>

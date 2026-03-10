@@ -80,8 +80,20 @@ export interface GameReplay {
   winner: "red" | "blue" | null;
   win_condition: "all_words" | "assassin" | "turn_limit";
   total_cost_usd: number;
+  total_turns: number;
   board: BoardState;
   turns: Turn[];
+  pair_id: number | null;
+  partner_game_id: string | null;
+}
+
+export interface PairResult {
+  pair_id: number;
+  model_a: string;
+  model_b: string;
+  a_wins: number;
+  b_wins: number;
+  label: string; // "2-0", "1-1", "0-2"
 }
 
 export interface RatingHistory {

@@ -46,6 +46,16 @@ function deriveDisplayName(row: { display_name: string; model_id: string }): str
   return row.display_name;
 }
 
+// CTE fragment: pair_ids that have exactly 2 completed games (complete pairs only)
+const COMPLETE_PAIRS_CTE = `complete_pairs AS (
+  SELECT pair_id FROM games
+  WHERE status = 'completed' AND pair_id IS NOT NULL
+  GROUP BY pair_id HAVING COUNT(*) = 2
+)`;
+
+// Filter clause to restrict to games in complete pairs
+const PAIRED_GAMES_FILTER = `status = 'completed' AND pair_id IN (SELECT pair_id FROM complete_pairs)`;
+
 // ─── Models ─────────────────────────────────────────────────────────────────
 
 export async function getModels(): Promise<Model[]> {
@@ -54,7 +64,8 @@ export async function getModels(): Promise<Model[]> {
   const [modelsRes, gameStatsRes, latencyRes, assassinRes] = await Promise.all([
     db.execute("SELECT * FROM models ORDER BY solo_rating DESC"),
     db.execute(
-      `SELECT
+      `WITH ${COMPLETE_PAIRS_CTE}
+       SELECT
          model_id,
          SUM(CASE WHEN role = 'solo' THEN 1 ELSE 0 END) as solo_games,
          SUM(CASE WHEN role = 'solo' AND won = 1 THEN 1 ELSE 0 END) as solo_wins,
@@ -73,13 +84,13 @@ export async function getModels(): Promise<Model[]> {
                 CASE WHEN winner = 'red' THEN 1 ELSE 0 END as won,
                 total_cost_usd as cost,
                 total_input_tokens + total_output_tokens as tokens
-         FROM games WHERE status = 'completed'
+         FROM games WHERE ${PAIRED_GAMES_FILTER}
          UNION ALL
          SELECT blue_sm_model as model_id, mode as role, 'blue' as team,
                 CASE WHEN winner = 'blue' THEN 1 ELSE 0 END as won,
                 total_cost_usd as cost,
                 total_input_tokens + total_output_tokens as tokens
-         FROM games WHERE status = 'completed'
+         FROM games WHERE ${PAIRED_GAMES_FILTER}
        )
        GROUP BY model_id`
     ),
@@ -95,19 +106,20 @@ export async function getModels(): Promise<Model[]> {
        GROUP BY model_id`
     ),
     db.execute(
-      `SELECT model_id,
+      `WITH ${COMPLETE_PAIRS_CTE}
+       SELECT model_id,
               SUM(CASE WHEN assassin_win = 1 THEN 1 ELSE 0 END) as assassin_wins,
               SUM(CASE WHEN assassin_loss = 1 THEN 1 ELSE 0 END) as assassin_losses
        FROM (
          SELECT red_sm_model as model_id,
                 CASE WHEN win_condition = 'assassin' AND winner = 'red' THEN 1 ELSE 0 END as assassin_win,
                 CASE WHEN win_condition = 'assassin' AND winner = 'blue' THEN 1 ELSE 0 END as assassin_loss
-         FROM games WHERE status = 'completed'
+         FROM games WHERE ${PAIRED_GAMES_FILTER}
          UNION ALL
          SELECT blue_sm_model as model_id,
                 CASE WHEN win_condition = 'assassin' AND winner = 'blue' THEN 1 ELSE 0 END as assassin_win,
                 CASE WHEN win_condition = 'assassin' AND winner = 'red' THEN 1 ELSE 0 END as assassin_loss
-         FROM games WHERE status = 'completed'
+         FROM games WHERE ${PAIRED_GAMES_FILTER}
        )
        GROUP BY model_id`
     ),
@@ -217,6 +229,19 @@ export async function getGameReplay(gameId: string): Promise<GameReplay | null> 
   const game = gameRes.rows[0];
   if (!game) return null;
 
+  // Find pair partner
+  const pairId = col(game, "pair_id") as number | null;
+  let partnerGameId: string | null = null;
+  if (pairId != null) {
+    const partnerRes = await db.execute({
+      sql: `SELECT game_id FROM games WHERE pair_id = ? AND game_id != ? AND status = 'completed'`,
+      args: [pairId, gameId],
+    });
+    if (partnerRes.rows.length > 0) {
+      partnerGameId = col(partnerRes.rows[0], "game_id") as string;
+    }
+  }
+
   const turnRes = await db.execute({
     sql: `SELECT turn_number, team, clue_word, clue_count, guesses_json
           FROM turns
@@ -250,13 +275,35 @@ export async function getGameReplay(gameId: string): Promise<GameReplay | null> 
     winner: col(game, "winner") as "red" | "blue" | null,
     win_condition: mapWinCondition(col(game, "win_condition") as string),
     total_cost_usd: (col(game, "total_cost_usd") as number) ?? 0,
+    total_turns: (col(game, "total_turns") as number) ?? 0,
     board: {
       words,
       key_card: keyCard,
       starting_team: (col(game, "starting_team") as "RED" | "BLUE") ?? "RED",
     },
     turns,
+    pair_id: pairId,
+    partner_game_id: partnerGameId,
   };
+}
+
+export async function getGamePair(pairId: number): Promise<GameReplay[]> {
+  const db = getDb();
+
+  const gamesRes = await db.execute({
+    sql: `SELECT g.game_id FROM games g
+          WHERE g.pair_id = ? AND g.status = 'completed'
+          ORDER BY g.game_id`,
+    args: [pairId],
+  });
+
+  const replays: GameReplay[] = [];
+  for (const row of gamesRes.rows) {
+    const replay = await getGameReplay(col(row, "game_id") as string);
+    if (replay) replays.push(replay);
+  }
+
+  return replays;
 }
 
 function parseGuesses(json: string | null): Guess[] {
@@ -306,6 +353,7 @@ export async function getRatingHistory(): Promise<RatingHistory[]> {
 
 const EMPTY_STATS = {
   totalGames: 0,
+  totalPairs: 0,
   totalModels: 0,
   avgTurns: 0,
   totalCost: 0,
@@ -320,9 +368,10 @@ export async function getOverallStats() {
   const db = getDb();
 
   try {
-    const [gameStatsRes, modelCountRes] = await Promise.all([
+    const [gameStatsRes, modelCountRes, pairCountRes] = await Promise.all([
       db.execute(
-        `SELECT
+        `WITH ${COMPLETE_PAIRS_CTE}
+         SELECT
            COUNT(*) as total_games,
            AVG(total_turns) as avg_turns,
            SUM(total_cost_usd) as total_cost,
@@ -332,16 +381,25 @@ export async function getOverallStats() {
            SUM(CASE WHEN winner = 'red' THEN 1 ELSE 0 END) as red_wins,
            SUM(CASE WHEN winner = 'blue' THEN 1 ELSE 0 END) as blue_wins
          FROM games
-         WHERE status = 'completed'`
+         WHERE ${PAIRED_GAMES_FILTER}`
       ),
       db.execute("SELECT COUNT(*) as count FROM models"),
+      db.execute(
+        `SELECT COUNT(*) as count FROM (
+           SELECT pair_id FROM games
+           WHERE status = 'completed' AND pair_id IS NOT NULL
+           GROUP BY pair_id HAVING COUNT(*) = 2
+         )`
+      ),
     ]);
 
     const gs = gameStatsRes.rows[0];
     const mc = modelCountRes.rows[0];
+    const pc = pairCountRes.rows[0];
 
     return {
       totalGames: (col(gs, "total_games") as number) ?? 0,
+      totalPairs: (col(pc, "count") as number) ?? 0,
       totalModels: (col(mc, "count") as number) ?? 0,
       avgTurns: (col(gs, "avg_turns") as number) ?? 0,
       totalCost: (col(gs, "total_cost") as number) ?? 0,
@@ -383,19 +441,21 @@ export async function getInsightsData(): Promise<InsightsData> {
          HAVING games >= 3`
       ),
       db.execute(
-        `SELECT model_id, AVG(total_turns) as avg_turns, COUNT(*) as wins
+        `WITH ${COMPLETE_PAIRS_CTE}
+         SELECT model_id, AVG(total_turns) as avg_turns, COUNT(*) as wins
          FROM (
            SELECT red_sm_model as model_id, total_turns
-           FROM games WHERE status = 'completed' AND winner = 'red'
+           FROM games WHERE ${PAIRED_GAMES_FILTER} AND winner = 'red'
            UNION ALL
            SELECT blue_sm_model as model_id, total_turns
-           FROM games WHERE status = 'completed' AND winner = 'blue'
+           FROM games WHERE ${PAIRED_GAMES_FILTER} AND winner = 'blue'
          )
          GROUP BY model_id
          HAVING wins >= 3`
       ),
       db.execute(
-        `SELECT model_id,
+        `WITH ${COMPLETE_PAIRS_CTE}
+         SELECT model_id,
                 SUM(CASE WHEN team = 'red' THEN 1 ELSE 0 END) as red_games,
                 SUM(CASE WHEN team = 'red' AND won = 1 THEN 1 ELSE 0 END) as red_wins,
                 SUM(CASE WHEN team = 'blue' THEN 1 ELSE 0 END) as blue_games,
@@ -403,25 +463,26 @@ export async function getInsightsData(): Promise<InsightsData> {
          FROM (
            SELECT red_sm_model as model_id, 'red' as team,
                   CASE WHEN winner = 'red' THEN 1 ELSE 0 END as won
-           FROM games WHERE status = 'completed'
+           FROM games WHERE ${PAIRED_GAMES_FILTER}
            UNION ALL
            SELECT blue_sm_model as model_id, 'blue' as team,
                   CASE WHEN winner = 'blue' THEN 1 ELSE 0 END as won
-           FROM games WHERE status = 'completed'
+           FROM games WHERE ${PAIRED_GAMES_FILTER}
          )
          GROUP BY model_id
          HAVING red_games >= 2 AND blue_games >= 2`
       ),
       db.execute(
-        `SELECT model_id,
+        `WITH ${COMPLETE_PAIRS_CTE}
+         SELECT model_id,
                 SUM(CASE WHEN win_condition = 'assassin' THEN 1 ELSE 0 END) as assassin_deaths,
                 COUNT(*) as total_games
          FROM (
            SELECT red_sm_model as model_id, win_condition
-           FROM games WHERE status = 'completed' AND winner = 'blue'
+           FROM games WHERE ${PAIRED_GAMES_FILTER} AND winner = 'blue'
            UNION ALL
            SELECT blue_sm_model as model_id, win_condition
-           FROM games WHERE status = 'completed' AND winner = 'red'
+           FROM games WHERE ${PAIRED_GAMES_FILTER} AND winner = 'red'
          )
          GROUP BY model_id
          HAVING total_games >= 3`
@@ -440,7 +501,8 @@ export async function getInsightsData(): Promise<InsightsData> {
          WHERE op_model IS NOT NULL AND guesses_json IS NOT NULL`
       ),
       db.execute(
-        `SELECT model_id,
+        `WITH ${COMPLETE_PAIRS_CTE}
+         SELECT model_id,
                 SUM(won) as comebacks,
                 COUNT(*) as games_behind
          FROM (
@@ -448,13 +510,13 @@ export async function getInsightsData(): Promise<InsightsData> {
                   CASE WHEN winner = 'red' THEN 1 ELSE 0 END as won
            FROM games g
            JOIN boards b ON g.board_id = b.board_id
-           WHERE g.status = 'completed' AND b.starting_team = 'blue'
+           WHERE ${PAIRED_GAMES_FILTER.replace(/status/g, 'g.status').replace(/pair_id/g, 'g.pair_id')} AND b.starting_team = 'blue'
            UNION ALL
            SELECT blue_sm_model as model_id,
                   CASE WHEN winner = 'blue' THEN 1 ELSE 0 END as won
            FROM games g
            JOIN boards b ON g.board_id = b.board_id
-           WHERE g.status = 'completed' AND b.starting_team = 'red'
+           WHERE ${PAIRED_GAMES_FILTER.replace(/status/g, 'g.status').replace(/pair_id/g, 'g.pair_id')} AND b.starting_team = 'red'
          )
          GROUP BY model_id
          HAVING games_behind >= 3`

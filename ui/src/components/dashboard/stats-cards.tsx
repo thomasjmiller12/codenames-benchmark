@@ -4,6 +4,7 @@ import { formatCost } from "@/lib/format";
 
 interface OverallStats {
   totalGames: number;
+  totalPairs: number;
   totalModels: number;
   avgTurns: number;
   totalCost: number;
@@ -14,9 +15,9 @@ interface OverallStats {
 export function StatsCards({ overallStats }: { overallStats: OverallStats }) {
   const stats = [
     {
-      label: "Total Games",
+      label: "Paired Games",
       value: overallStats.totalGames.toString(),
-      sub: "completed",
+      sub: `${overallStats.totalPairs} pairs`,
       icon: Gamepad2,
       accent: "text-red-400",
       border: "border-l-red-500",

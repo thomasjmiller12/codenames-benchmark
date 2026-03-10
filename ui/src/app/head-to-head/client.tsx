@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { PairResultBadge } from "@/components/pair-result-badge";
 import {
   ResponsiveContainer,
   LineChart,
@@ -31,6 +32,7 @@ import {
 import { ELO_BASELINE } from "@/lib/constants";
 import { ENABLE_ROLE_RATINGS } from "@/lib/feature-flags";
 import { formatRating, formatWinRate, formatCost, formatDateTime, getWinRate } from "@/lib/format";
+import { buildPairMap, getPairResultForModel } from "@/lib/pairs";
 import { Swords, Play } from "lucide-react";
 import type { Model, Game, RatingHistory } from "@/lib/types";
 
@@ -100,6 +102,8 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
       (g.red_sm_model === b.model_id && g.blue_sm_model === a.model_id)
   );
 
+  const pairMap = buildPairMap(h2hGames);
+
   const aWins = h2hGames.filter(
     (g) =>
       (g.red_sm_model === a.model_id && g.winner === "red") ||
@@ -108,11 +112,11 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
   const bWins = h2hGames.length - aWins;
 
   // Pair/board stats: group games by pair_id to compute 2-0 vs 1-1 results
-  const pairMap = new Map<number, { aWins: number; bWins: number }>();
+  const pairStats = new Map<number, { aWins: number; bWins: number }>();
   for (const g of h2hGames) {
     if (g.pair_id == null) continue;
-    if (!pairMap.has(g.pair_id)) pairMap.set(g.pair_id, { aWins: 0, bWins: 0 });
-    const pair = pairMap.get(g.pair_id)!;
+    if (!pairStats.has(g.pair_id)) pairStats.set(g.pair_id, { aWins: 0, bWins: 0 });
+    const pair = pairStats.get(g.pair_id)!;
     const aWon =
       (g.red_sm_model === a.model_id && g.winner === "red") ||
       (g.blue_sm_model === a.model_id && g.winner === "blue");
@@ -120,15 +124,23 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
     else pair.bWins++;
   }
 
-  let pairSweepsA = 0; // A won 2-0
-  let pairSweepsB = 0; // B won 2-0
-  let pairDraws = 0;   // 1-1 split
-  for (const pair of pairMap.values()) {
+  let pairSweepsA = 0;
+  let pairSweepsB = 0;
+  let pairDraws = 0;
+  for (const pair of pairStats.values()) {
     if (pair.aWins === 2) pairSweepsA++;
     else if (pair.bWins === 2) pairSweepsB++;
     else if (pair.aWins === 1 && pair.bWins === 1) pairDraws++;
   }
   const totalPairs = pairSweepsA + pairSweepsB + pairDraws;
+
+  // Sort h2h games by pair_id then date for grouped display
+  const sortedH2hGames = [...h2hGames].sort((x, y) => {
+    if (x.pair_id != null && y.pair_id != null && x.pair_id !== y.pair_id) {
+      return y.pair_id - x.pair_id; // newer pairs first
+    }
+    return 0; // keep original order within a pair
+  });
 
   // Comparison stats
   const stats = [
@@ -170,7 +182,7 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
       label: "Avg Latency",
       aVal: a.avg_latency_ms,
       bVal: b.avg_latency_ms,
-      format: (v: number) => v > 0 ? `${(v / 1000).toFixed(1)}s` : "—",
+      format: (v: number) => v > 0 ? `${(v / 1000).toFixed(1)}s` : "\u2014",
     },
     {
       label: "Total Cost",
@@ -428,13 +440,14 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
                   <TableHead className="text-xs">{a.display_name}</TableHead>
                   <TableHead className="text-xs">{b.display_name}</TableHead>
                   <TableHead className="text-xs">Winner</TableHead>
+                  <TableHead className="text-xs">Pair</TableHead>
                   <TableHead className="text-xs text-right">Turns</TableHead>
                   <TableHead className="text-xs text-right">Cost</TableHead>
                   <TableHead className="text-xs text-right pr-6"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {h2hGames.map((game) => {
+                {sortedH2hGames.map((game, idx) => {
                   const aIsRed = game.red_sm_model === a.model_id;
                   const winnerModel =
                     game.winner === "red"
@@ -442,11 +455,21 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
                       : game.blue_sm_model;
                   const aWon = winnerModel === a.model_id;
                   const gameHref = `/games/${game.game_id}`;
+                  const pairResult = getPairResultForModel(game, a.model_id, pairMap);
+
+                  // Check if this is the first game of a new pair group
+                  const prevGame = idx > 0 ? sortedH2hGames[idx - 1] : null;
+                  const isNewPairGroup = game.pair_id != null && (
+                    !prevGame || prevGame.pair_id !== game.pair_id
+                  );
+                  const isPairSecond = game.pair_id != null && prevGame?.pair_id === game.pair_id;
 
                   return (
                     <TableRow
                       key={game.game_id}
-                      className="border-border/30 cursor-pointer transition-colors hover:bg-accent/30"
+                      className={`border-border/30 cursor-pointer transition-colors hover:bg-accent/30 ${
+                        isNewPairGroup && idx > 0 ? "border-t-2 border-t-border/60" : ""
+                      } ${isPairSecond ? "bg-muted/10" : ""}`}
                     >
                       <TableCell className="pl-6 text-xs text-muted-foreground font-mono">
                         <Link href={gameHref} className="block">
@@ -493,6 +516,15 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
                           >
                             {aWon ? a.display_name : b.display_name}
                           </Badge>
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <Link href={gameHref} className="block">
+                          {pairResult ? (
+                            <PairResultBadge label={pairResult.label} variant={pairResult.variant} />
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground/50">unpaired</span>
+                          )}
                         </Link>
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm">

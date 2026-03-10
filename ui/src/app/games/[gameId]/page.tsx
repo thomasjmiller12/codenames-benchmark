@@ -19,7 +19,19 @@ export default async function GameReplayPage({
 
   // If we have full replay data (board + turns), show the interactive replay
   if (replay && replay.turns.length > 0) {
-    return <GameReplayClient replay={replay} models={models} />;
+    // Fetch pair partner if available
+    let partnerReplay = null;
+    if (replay.pair_id != null && replay.partner_game_id) {
+      partnerReplay = await getGameReplay(replay.partner_game_id);
+    }
+
+    return (
+      <GameReplayClient
+        replay={replay}
+        partnerReplay={partnerReplay}
+        models={models}
+      />
+    );
   }
 
   // Otherwise show a summary of the game from the games table

@@ -38,6 +38,8 @@ import {
   getWinRate,
 } from "@/lib/format";
 import { ArrowLeft, Zap, DollarSign, Gamepad2, ThumbsUp, ThumbsDown, Play } from "lucide-react";
+import { PairResultBadge } from "@/components/pair-result-badge";
+import { buildPairMap, getPairResultForModel } from "@/lib/pairs";
 import type { Model, Game, RatingHistory } from "@/lib/types";
 
 const tooltipStyle = {
@@ -164,6 +166,10 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
         g.blue_sm_model === model.model_id
     )
     .slice(0, 8);
+
+  const modelPairMap = buildPairMap(games.filter(
+    (g) => g.red_sm_model === model.model_id || g.blue_sm_model === model.model_id
+  ));
 
   // Compute opponent stats
   const allModelGames = games.filter(
@@ -673,9 +679,8 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
                     <TableHead className="pl-6 text-xs">Date</TableHead>
                     <TableHead className="text-xs">Opponent</TableHead>
                     <TableHead className="text-xs">Team</TableHead>
-                    <TableHead className="text-xs text-right">
-                      Result
-                    </TableHead>
+                    <TableHead className="text-xs text-right">Result</TableHead>
+                    <TableHead className="text-xs">Pair</TableHead>
                     <TableHead className="text-xs text-right pr-6"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -689,6 +694,7 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
                       (isRed && game.winner === "red") ||
                       (!isRed && game.winner === "blue");
                     const gameHref = `/games/${game.game_id}`;
+                    const pairResult = getPairResultForModel(game, model.model_id, modelPairMap);
 
                     return (
                       <TableRow
@@ -731,6 +737,15 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
                             >
                               {won ? "W" : "L"}
                             </Badge>
+                          </Link>
+                        </TableCell>
+                        <TableCell>
+                          <Link href={gameHref} className="block">
+                            {pairResult ? (
+                              <PairResultBadge label={pairResult.label} variant={pairResult.variant} />
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground/50">unpaired</span>
+                            )}
                           </Link>
                         </TableCell>
                         <TableCell className="text-right pr-6">
