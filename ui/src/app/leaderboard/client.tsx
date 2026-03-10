@@ -14,6 +14,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { PROVIDER_COLORS, ELO_BASELINE } from "@/lib/constants";
+import { ENABLE_ROLE_RATINGS } from "@/lib/feature-flags";
 import { formatRating, formatWinRate, formatCost } from "@/lib/format";
 import type { RatingType, Model } from "@/lib/types";
 
@@ -72,16 +73,18 @@ export function LeaderboardClient({ models }: { models: Model[] }) {
             Model rankings by Elo rating
           </p>
         </div>
-        <Tabs
-          value={ratingType}
-          onValueChange={(v) => v && setRatingType(v as RatingType)}
-        >
-          <TabsList>
-            <TabsTrigger value="solo">Solo</TabsTrigger>
-            <TabsTrigger value="spymaster">Spymaster</TabsTrigger>
-            <TabsTrigger value="operative">Operative</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {ENABLE_ROLE_RATINGS && (
+          <Tabs
+            value={ratingType}
+            onValueChange={(v) => v && setRatingType(v as RatingType)}
+          >
+            <TabsList>
+              <TabsTrigger value="solo">Solo</TabsTrigger>
+              <TabsTrigger value="spymaster">Spymaster</TabsTrigger>
+              <TabsTrigger value="operative">Operative</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
       </div>
 
       <Card className="bg-card/50">

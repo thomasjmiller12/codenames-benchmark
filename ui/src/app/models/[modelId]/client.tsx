@@ -27,6 +27,7 @@ import {
   Bar,
 } from "recharts";
 import { PROVIDER_COLORS, ELO_BASELINE } from "@/lib/constants";
+import { ENABLE_ROLE_RATINGS } from "@/lib/feature-flags";
 import {
   formatRating,
   formatCost,
@@ -59,23 +60,31 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
   const soloHistory = ratingHistory
     .filter((r) => r.model_id === model.model_id && r.rating_type === "solo")
     .sort((a, b) => a.game_number - b.game_number);
-  const smHistory = ratingHistory
-    .filter(
-      (r) => r.model_id === model.model_id && r.rating_type === "spymaster"
-    )
-    .sort((a, b) => a.game_number - b.game_number);
-  const opHistory = ratingHistory
-    .filter(
-      (r) => r.model_id === model.model_id && r.rating_type === "operative"
-    )
-    .sort((a, b) => a.game_number - b.game_number);
+  const smHistory = ENABLE_ROLE_RATINGS
+    ? ratingHistory
+        .filter(
+          (r) => r.model_id === model.model_id && r.rating_type === "spymaster"
+        )
+        .sort((a, b) => a.game_number - b.game_number)
+    : [];
+  const opHistory = ENABLE_ROLE_RATINGS
+    ? ratingHistory
+        .filter(
+          (r) => r.model_id === model.model_id && r.rating_type === "operative"
+        )
+        .sort((a, b) => a.game_number - b.game_number)
+    : [];
 
   // Merge into one array for the line chart
   const ratingChartData = soloHistory.map((s, i) => ({
     game: s.game_number,
     solo: s.rating,
-    spymaster: smHistory[i]?.rating ?? 1500,
-    operative: opHistory[i]?.rating ?? 1500,
+    ...(ENABLE_ROLE_RATINGS
+      ? {
+          spymaster: smHistory[i]?.rating ?? 1500,
+          operative: opHistory[i]?.rating ?? 1500,
+        }
+      : {}),
   }));
 
   const hasRatingHistory = ratingChartData.length > 0;
@@ -88,21 +97,25 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
 
   const radarData = [
     { axis: "Solo", value: normalize(model.solo_rating), fullMark: 100 },
-    {
-      axis: "Spymaster",
-      value: normalize(model.spymaster_rating),
-      fullMark: 100,
-    },
-    {
-      axis: "Operative",
-      value: normalize(model.operative_rating),
-      fullMark: 100,
-    },
+    ...(ENABLE_ROLE_RATINGS
+      ? [
+          {
+            axis: "Spymaster",
+            value: normalize(model.spymaster_rating),
+            fullMark: 100,
+          },
+          {
+            axis: "Operative",
+            value: normalize(model.operative_rating),
+            fullMark: 100,
+          },
+        ]
+      : []),
     {
       axis: "Win Rate",
       value: getWinRate(
-        model.solo_wins + model.spymaster_wins + model.operative_wins,
-        model.solo_games + model.spymaster_games + model.operative_games
+        model.solo_wins + (ENABLE_ROLE_RATINGS ? model.spymaster_wins + model.operative_wins : 0),
+        model.solo_games + (ENABLE_ROLE_RATINGS ? model.spymaster_games + model.operative_games : 0)
       ),
       fullMark: 100,
     },
@@ -110,7 +123,7 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
       axis: "Efficiency",
       value: Math.min(
         100,
-        ((model.solo_wins + model.spymaster_wins + model.operative_wins) /
+        ((model.solo_wins + (ENABLE_ROLE_RATINGS ? model.spymaster_wins + model.operative_wins : 0)) /
           Math.max(model.total_cost_usd, 0.1)) *
           2
       ),
@@ -125,16 +138,20 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
       wins: model.solo_wins,
       losses: model.solo_games - model.solo_wins,
     },
-    {
-      role: "Spymaster",
-      wins: model.spymaster_wins,
-      losses: model.spymaster_games - model.spymaster_wins,
-    },
-    {
-      role: "Operative",
-      wins: model.operative_wins,
-      losses: model.operative_games - model.operative_wins,
-    },
+    ...(ENABLE_ROLE_RATINGS
+      ? [
+          {
+            role: "Spymaster",
+            wins: model.spymaster_wins,
+            losses: model.spymaster_games - model.spymaster_wins,
+          },
+          {
+            role: "Operative",
+            wins: model.operative_wins,
+            losses: model.operative_games - model.operative_wins,
+          },
+        ]
+      : []),
   ];
 
   const hasWinData = winRoleData.some((d) => d.wins + d.losses > 0);
@@ -185,10 +202,12 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
     .sort((a, b) => a.winRate - b.winRate || b.games - a.games)
     .slice(0, 3);
 
-  const totalGames =
-    model.solo_games + model.spymaster_games + model.operative_games;
-  const totalWins =
-    model.solo_wins + model.spymaster_wins + model.operative_wins;
+  const totalGames = ENABLE_ROLE_RATINGS
+    ? model.solo_games + model.spymaster_games + model.operative_games
+    : model.solo_games;
+  const totalWins = ENABLE_ROLE_RATINGS
+    ? model.solo_wins + model.spymaster_wins + model.operative_wins
+    : model.solo_wins;
 
   return (
     <div className="space-y-6">
@@ -257,7 +276,7 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
             </div>
             <p className="text-2xl font-bold font-mono">{totalGames}</p>
             <p className="text-[11px] text-muted-foreground mt-1">
-              across all roles
+              {ENABLE_ROLE_RATINGS ? "across all roles" : "solo mode"}
             </p>
           </CardContent>
         </Card>
@@ -329,29 +348,37 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
                       dot={false}
                       name="Solo"
                     />
-                    <Line
-                      type="monotone"
-                      dataKey="spymaster"
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                      dot={false}
-                      name="Spymaster"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="operative"
-                      stroke="#22c55e"
-                      strokeWidth={2}
-                      dot={false}
-                      name="Operative"
-                    />
+                    {ENABLE_ROLE_RATINGS && (
+                      <Line
+                        type="monotone"
+                        dataKey="spymaster"
+                        stroke="#3b82f6"
+                        strokeWidth={2}
+                        dot={false}
+                        name="Spymaster"
+                      />
+                    )}
+                    {ENABLE_ROLE_RATINGS && (
+                      <Line
+                        type="monotone"
+                        dataKey="operative"
+                        stroke="#22c55e"
+                        strokeWidth={2}
+                        dot={false}
+                        name="Operative"
+                      />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
                 <div className="mt-3 flex justify-center gap-6">
                   {[
                     { label: "Solo", color: "#f97316" },
-                    { label: "Spymaster", color: "#3b82f6" },
-                    { label: "Operative", color: "#22c55e" },
+                    ...(ENABLE_ROLE_RATINGS
+                      ? [
+                          { label: "Spymaster", color: "#3b82f6" },
+                          { label: "Operative", color: "#22c55e" },
+                        ]
+                      : []),
                   ].map((l) => (
                     <div key={l.label} className="flex items-center gap-2 text-xs">
                       <div

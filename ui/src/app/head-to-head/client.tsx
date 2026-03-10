@@ -28,6 +28,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { ELO_BASELINE } from "@/lib/constants";
+import { ENABLE_ROLE_RATINGS } from "@/lib/feature-flags";
 import { formatRating, formatWinRate, formatCost, formatDateTime, getWinRate } from "@/lib/format";
 import { Swords } from "lucide-react";
 import type { Model, Game, RatingHistory } from "@/lib/types";
@@ -113,18 +114,22 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
       bVal: b.solo_rating,
       format: formatRating,
     },
-    {
-      label: "Spymaster Elo",
-      aVal: a.spymaster_rating,
-      bVal: b.spymaster_rating,
-      format: formatRating,
-    },
-    {
-      label: "Operative Elo",
-      aVal: a.operative_rating,
-      bVal: b.operative_rating,
-      format: formatRating,
-    },
+    ...(ENABLE_ROLE_RATINGS
+      ? [
+          {
+            label: "Spymaster Elo",
+            aVal: a.spymaster_rating,
+            bVal: b.spymaster_rating,
+            format: formatRating,
+          },
+          {
+            label: "Operative Elo",
+            aVal: a.operative_rating,
+            bVal: b.operative_rating,
+            format: formatRating,
+          },
+        ]
+      : []),
     {
       label: "Win Rate",
       aVal: getWinRate(a.solo_wins, a.solo_games),

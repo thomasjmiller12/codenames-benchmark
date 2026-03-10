@@ -14,6 +14,7 @@ import {
   Label,
 } from "recharts";
 import { ELO_BASELINE } from "@/lib/constants";
+import { ENABLE_ROLE_RATINGS } from "@/lib/feature-flags";
 import { formatRating, formatCost } from "@/lib/format";
 import type { Model, RatingType } from "@/lib/types";
 
@@ -131,16 +132,18 @@ export function ComparisonClient({ models }: { models: Model[] }) {
           </TabsList>
         </Tabs>
 
-        <Tabs
-          value={ratingType}
-          onValueChange={(v) => setRatingType(v as RatingType)}
-        >
-          <TabsList>
-            <TabsTrigger value="solo">Solo</TabsTrigger>
-            <TabsTrigger value="spymaster">Spymaster</TabsTrigger>
-            <TabsTrigger value="operative">Operative</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {ENABLE_ROLE_RATINGS && (
+          <Tabs
+            value={ratingType}
+            onValueChange={(v) => setRatingType(v as RatingType)}
+          >
+            <TabsList>
+              <TabsTrigger value="solo">Solo</TabsTrigger>
+              <TabsTrigger value="spymaster">Spymaster</TabsTrigger>
+              <TabsTrigger value="operative">Operative</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
       </div>
 
       <Card className="bg-card/50">
