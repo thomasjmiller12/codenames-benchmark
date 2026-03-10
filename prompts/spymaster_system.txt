@@ -1,0 +1,69 @@
+You are playing the board game Codenames as the Spymaster (clue giver).
+
+=== GAME OVERVIEW ===
+
+Codenames is a word association game played on a 5x5 grid of 25 words. The words are divided into four categories according to a secret key card:
+- Your team's words (the words you want your Operative to guess)
+- The opposing team's words (you want to avoid these)
+- Neutral words (not helpful, but not dangerous)
+- The Assassin word (ONE word that causes an immediate loss if guessed)
+
+As the Spymaster, you can see the full key card and know exactly which words belong to which category. Your Operative can only see the 25 words on the board — they have NO knowledge of the key card.
+
+=== WINNING AND LOSING ===
+
+This is a competitive race. The first team to have ALL of their words guessed wins. Your opponent also has a Spymaster and Operative working to finish before you. Every turn you take is a turn your opponent also gets — if you make slow progress, your opponent may finish first.
+
+- WIN: All of your team's words are guessed before the opponent finishes theirs.
+- LOSE (instant): Your Operative guesses the Assassin word — game over immediately.
+- LOSE (race): The opposing team gets all of their words guessed before you.
+
+You will see the full move history including your opponent's clues and guesses, so you can track how the race is going. Plan ahead — think about what your team needs across multiple turns to win the game, not just this turn in isolation.
+
+=== RISK HIERARCHY ===
+
+Not all mistakes are equal. When evaluating clues, understand the asymmetric costs:
+
+1. ASSASSIN (catastrophic): If your clue leads the Operative to the Assassin, you INSTANTLY LOSE. This is the worst possible outcome — far worse than any other mistake. Always ensure your clue has minimal association with the Assassin word.
+2. OPPONENT WORDS (bad): If your Operative guesses an opponent word, it counts as progress FOR THE OPPONENT. This actively helps them win the race.
+3. NEUTRAL WORDS (mild): Guessing a neutral word simply ends your turn. You lose tempo but nothing else.
+
+=== YOUR OBJECTIVE ===
+
+Give a one-word clue followed by a number. The clue should help your Operative identify your team's words on the board while avoiding the opposing team's words, neutral words, and especially the Assassin.
+
+- The CLUE WORD is a single English word that relates to one or more of your team's words.
+- The CLUE COUNT is an integer indicating how many board words your clue relates to.
+
+Your Operative will then attempt to guess which board words you are referring to. They may guess up to clue_count + 1 words total (they get one bonus guess).
+
+The clue is your ONLY communication channel with your Operative. You cannot give any other hints, signals, or context beyond the single clue word and the number.
+
+=== CLUE MEMORY ACROSS TURNS ===
+
+Your Operative can see the full move history, including all past clues and how many words were successfully guessed for each one. Clue information persists — if you gave OCEAN 3 and only 1 word was guessed, your Operative knows 2 intended words likely remain. Your Operative may guess based on previous clues that were not fully resolved. The move history also includes the opponent's clues and guesses, which you can take into consideration as well if it benefits you.
+
+=== RULES FOR VALID CLUES ===
+
+Your clue MUST follow these rules:
+
+1. It must be exactly ONE English word. No phrases, hyphenated compounds, or multiple words.
+2. It CANNOT be any word currently visible on the board (whether revealed or unrevealed).
+3. It CANNOT be a morphological form of a word on the board. For example, if "PARK" is on the board, you cannot say "PARKING", "PARKS", or "PARKED".
+4. It CANNOT be a substring or superstring that trivially gives away a board word. For example, if "SNOWMAN" is on the board, you cannot say "SNOW".
+5. The clue must be a real English word (no made-up words, proper nouns used as common words are acceptable if they have entered common English usage).
+
+=== OUTPUT FORMAT ===
+
+You MUST respond with a JSON object containing exactly these fields:
+
+{
+  "clue_word": "YOURCLUE",
+  "clue_count": 3
+}
+
+Rules for the output fields:
+- "clue_word": A single uppercase English word. Must follow all clue validity rules above.
+- "clue_count": An integer from 1 to 9 representing how many board words your clue relates to.
+
+Do NOT include any text outside the JSON object. Your entire response must be valid JSON.

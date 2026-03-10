@@ -1,0 +1,120 @@
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { formatDateTime, formatCost, getModelDisplayName } from "@/lib/format";
+import type { Game, Model } from "@/lib/types";
+
+export function RecentGamesTable({
+  games,
+  models,
+}: {
+  games: Game[];
+  models: Model[];
+}) {
+  if (games.length === 0) {
+    return (
+      <Card className="bg-card/50">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold">Recent Games</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground py-8 text-center">
+            No games played yet. Run a benchmark to see results here.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const recent = games.slice(0, 10);
+
+  return (
+    <Card className="bg-card/50">
+      <CardHeader>
+        <CardTitle className="text-base font-semibold">Recent Games</CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow className="border-border/50 hover:bg-transparent">
+              <TableHead className="pl-6 text-xs">Date</TableHead>
+              <TableHead className="text-xs">Red Team</TableHead>
+              <TableHead className="text-xs">Blue Team</TableHead>
+              <TableHead className="text-xs">Result</TableHead>
+              <TableHead className="text-xs">Condition</TableHead>
+              <TableHead className="text-xs text-right">Turns</TableHead>
+              <TableHead className="text-xs text-right pr-6">Cost</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {recent.map((game) => (
+              <TableRow
+                key={game.game_id}
+                className="border-border/30 cursor-pointer transition-colors hover:bg-accent/30"
+              >
+                <TableCell className="pl-6 text-xs text-muted-foreground font-mono">
+                  <Link href={`/games/${game.game_id}`} className="block">
+                    {formatDateTime(game.completed_at)}
+                  </Link>
+                </TableCell>
+                <TableCell className="text-sm">
+                  <Link href={`/games/${game.game_id}`} className="flex items-center">
+                    <span className="inline-block h-2 w-2 rounded-full bg-red-500 mr-2" />
+                    {getModelDisplayName(game.red_sm_model, models)}
+                  </Link>
+                </TableCell>
+                <TableCell className="text-sm">
+                  <Link href={`/games/${game.game_id}`} className="flex items-center">
+                    <span className="inline-block h-2 w-2 rounded-full bg-blue-500 mr-2" />
+                    {getModelDisplayName(game.blue_sm_model, models)}
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  <Link href={`/games/${game.game_id}`} className="block">
+                    <Badge
+                      variant="outline"
+                      className={
+                        game.winner === "red"
+                          ? "border-red-500/40 bg-red-500/10 text-red-400"
+                          : "border-blue-500/40 bg-blue-500/10 text-blue-400"
+                      }
+                    >
+                      {game.winner === "red" ? "Red" : "Blue"} wins
+                    </Badge>
+                  </Link>
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  <Link href={`/games/${game.game_id}`} className="block">
+                    {game.win_condition === "all_words"
+                      ? "All words"
+                      : game.win_condition === "assassin"
+                      ? "Assassin"
+                      : "Turn limit"}
+                  </Link>
+                </TableCell>
+                <TableCell className="text-right text-sm font-mono">
+                  <Link href={`/games/${game.game_id}`} className="block">
+                    {game.total_turns}
+                  </Link>
+                </TableCell>
+                <TableCell className="text-right text-sm font-mono text-muted-foreground pr-6">
+                  <Link href={`/games/${game.game_id}`} className="block">
+                    {formatCost(game.total_cost_usd)}
+                  </Link>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
