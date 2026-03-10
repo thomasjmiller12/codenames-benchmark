@@ -9,6 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Play } from "lucide-react";
 import { formatDateTime, formatCost, getModelDisplayName } from "@/lib/format";
 import type { Game, Model } from "@/lib/types";
 
@@ -61,7 +62,8 @@ export function RecentGamesTable({
               <TableHead className="text-xs">Result</TableHead>
               <TableHead className="text-xs">Condition</TableHead>
               <TableHead className="text-xs text-right">Turns</TableHead>
-              <TableHead className="text-xs text-right pr-6">Cost</TableHead>
+              <TableHead className="text-xs text-right">Cost</TableHead>
+              <TableHead className="text-xs text-right pr-6"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -115,9 +117,18 @@ export function RecentGamesTable({
                     {game.total_turns}
                   </Link>
                 </TableCell>
-                <TableCell className="text-right text-sm font-mono text-muted-foreground pr-6">
+                <TableCell className="text-right text-sm font-mono text-muted-foreground">
                   <Link href={`/games/${game.game_id}`} className="block">
                     {formatCost(game.total_cost_usd)}
+                  </Link>
+                </TableCell>
+                <TableCell className="text-right pr-6">
+                  <Link
+                    href={`/games/${game.game_id}`}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+                  >
+                    <Play className="h-3 w-3 fill-current" />
+                    Replay
                   </Link>
                 </TableCell>
               </TableRow>

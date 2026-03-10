@@ -31,7 +31,7 @@ import {
 import { ELO_BASELINE } from "@/lib/constants";
 import { ENABLE_ROLE_RATINGS } from "@/lib/feature-flags";
 import { formatRating, formatWinRate, formatCost, formatDateTime, getWinRate } from "@/lib/format";
-import { Swords } from "lucide-react";
+import { Swords, Play } from "lucide-react";
 import type { Model, Game, RatingHistory } from "@/lib/types";
 
 const tooltipStyle = {
@@ -382,7 +382,8 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
                   <TableHead className="text-xs">{b.display_name}</TableHead>
                   <TableHead className="text-xs">Winner</TableHead>
                   <TableHead className="text-xs text-right">Turns</TableHead>
-                  <TableHead className="text-xs text-right pr-6">Cost</TableHead>
+                  <TableHead className="text-xs text-right">Cost</TableHead>
+                  <TableHead className="text-xs text-right pr-6"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -452,9 +453,18 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
                           {game.total_turns}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-right font-mono text-sm text-muted-foreground pr-6">
+                      <TableCell className="text-right font-mono text-sm text-muted-foreground">
                         <Link href={gameHref} className="block">
                           {formatCost(game.total_cost_usd)}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-right pr-6">
+                        <Link
+                          href={gameHref}
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+                        >
+                          <Play className="h-3 w-3 fill-current" />
+                          Replay
                         </Link>
                       </TableCell>
                     </TableRow>

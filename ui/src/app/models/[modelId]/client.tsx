@@ -37,7 +37,7 @@ import {
   getModelDisplayName,
   getWinRate,
 } from "@/lib/format";
-import { ArrowLeft, Zap, DollarSign, Gamepad2, ThumbsUp, ThumbsDown } from "lucide-react";
+import { ArrowLeft, Zap, DollarSign, Gamepad2, ThumbsUp, ThumbsDown, Play } from "lucide-react";
 import type { Model, Game, RatingHistory } from "@/lib/types";
 
 const tooltipStyle = {
@@ -646,9 +646,10 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
                     <TableHead className="pl-6 text-xs">Date</TableHead>
                     <TableHead className="text-xs">Opponent</TableHead>
                     <TableHead className="text-xs">Team</TableHead>
-                    <TableHead className="text-xs text-right pr-6">
+                    <TableHead className="text-xs text-right">
                       Result
                     </TableHead>
+                    <TableHead className="text-xs text-right pr-6"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -691,7 +692,7 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
                             </Badge>
                           </Link>
                         </TableCell>
-                        <TableCell className="text-right pr-6">
+                        <TableCell className="text-right">
                           <Link href={gameHref} className="block">
                             <Badge
                               variant="outline"
@@ -703,6 +704,15 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
                             >
                               {won ? "W" : "L"}
                             </Badge>
+                          </Link>
+                        </TableCell>
+                        <TableCell className="text-right pr-6">
+                          <Link
+                            href={gameHref}
+                            className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+                          >
+                            <Play className="h-3 w-3 fill-current" />
+                            Replay
                           </Link>
                         </TableCell>
                       </TableRow>
