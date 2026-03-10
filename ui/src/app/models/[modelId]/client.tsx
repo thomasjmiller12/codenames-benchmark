@@ -202,6 +202,28 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
     .sort((a, b) => a.winRate - b.winRate || b.games - a.games)
     .slice(0, 3);
 
+  // Board pair stats
+  const pairMap = new Map<number, { wins: number; losses: number }>();
+  for (const g of allModelGames) {
+    if (g.pair_id == null) continue;
+    if (!pairMap.has(g.pair_id)) pairMap.set(g.pair_id, { wins: 0, losses: 0 });
+    const pair = pairMap.get(g.pair_id)!;
+    const isRed = g.red_sm_model === model.model_id;
+    const won = (isRed && g.winner === "red") || (!isRed && g.winner === "blue");
+    if (won) pair.wins++;
+    else pair.losses++;
+  }
+
+  let pairSweeps = 0;   // 2-0 wins
+  let pairDraws = 0;    // 1-1 splits
+  let pairLosses = 0;   // 0-2 losses
+  for (const pair of pairMap.values()) {
+    if (pair.wins === 2) pairSweeps++;
+    else if (pair.losses === 2) pairLosses++;
+    else if (pair.wins === 1 && pair.losses === 1) pairDraws++;
+  }
+  const totalPairs = pairSweeps + pairDraws + pairLosses;
+
   const totalGames = ENABLE_ROLE_RATINGS
     ? model.solo_games + model.spymaster_games + model.operative_games
     : model.solo_games;
@@ -267,6 +289,11 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
             <p className="text-[11px] text-muted-foreground mt-1">
               {totalWins}W / {totalGames - totalWins}L
             </p>
+            {totalPairs > 0 && (
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Pairs: {pairSweeps}W / {pairDraws}D / {pairLosses}L
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card className="bg-card/50 border-l-4 border-l-amber-500">
