@@ -248,11 +248,18 @@ def compute_ratings_from_db(
     model_rows = repo.list_models()
     model_ids = [m["model_id"] for m in model_rows]
 
-    # Group games by pair_id for pair-based scoring
-    pairs: dict[int | None, list[dict]] = {}
+    # Group games by (pair_id, matchup) for pair-based scoring.
+    # pair_id is a round number — multiple matchups share the same pair_id,
+    # so we sub-group by the sorted model pair within each pair_id.
+    MatchupKey = tuple[int | None, tuple[str, str]]  # (pair_id, (model_a, model_b))
+    matchups: dict[MatchupKey, list[dict]] = {}
     for row in rows:
+        if row["mode"] != "solo":
+            continue
         pid = row.get("pair_id")
-        pairs.setdefault(pid, []).append(row)
+        models_key = tuple(sorted([row["red_sm_model"], row["blue_sm_model"]]))
+        key = (pid, models_key)
+        matchups.setdefault(key, []).append(row)
 
     # Build game results for each mode
     solo_results: list[GameResultTuple] = []
@@ -262,36 +269,27 @@ def compute_ratings_from_db(
         games_per_model.setdefault(model_id, {}).setdefault(rating_type, 0)
         games_per_model[model_id][rating_type] += 1
 
-    for pid, pair_games in pairs.items():
+    for (pid, models_key), matchup_games in matchups.items():
+        model_a, model_b = models_key
+
         if pid is None:
             # Unpaired games — treat each as a standalone result
-            for g in pair_games:
-                if g["mode"] != "solo":
-                    continue
-                model_a = g["red_sm_model"]
-                model_b = g["blue_sm_model"]
+            for g in matchup_games:
                 _count_game(model_a, "solo")
                 _count_game(model_b, "solo")
                 if g["winner"] == "red":
-                    solo_results.append((model_a, model_b, 1.0))
+                    solo_results.append((g["red_sm_model"], g["blue_sm_model"], 1.0))
                 elif g["winner"] == "blue":
-                    solo_results.append((model_a, model_b, 0.0))
-                # No winner (turn_limit with no winner) — skip
+                    solo_results.append((g["red_sm_model"], g["blue_sm_model"], 0.0))
             continue
 
         # Paired games — determine pair outcome
-        valid_games = [g for g in pair_games if g["status"] == "completed"]
-        solo_games = [g for g in valid_games if g["mode"] == "solo"]
+        valid_games = [g for g in matchup_games if g["status"] == "completed"]
 
-        if len(solo_games) == 2:
-            # Determine the two models in this pair
-            g1, g2 = solo_games
-            models_in_pair = sorted({g1["red_sm_model"], g1["blue_sm_model"]})
-            model_a, model_b = models_in_pair
-
+        if len(valid_games) == 2:
             a_wins = 0
             b_wins = 0
-            for g in solo_games:
+            for g in valid_games:
                 if g["winner"] == "red":
                     winner = g["red_sm_model"]
                 elif g["winner"] == "blue":
@@ -312,19 +310,16 @@ def compute_ratings_from_db(
                 solo_results.append((model_a, model_b, 0.0))
             elif a_wins == 1 and b_wins == 1:
                 solo_results.append((model_a, model_b, 0.5))
-            # else: both games had no winner — skip
 
-        elif len(solo_games) == 1:
+        elif len(valid_games) == 1:
             # Single valid game in pair — treat as standalone
-            g = solo_games[0]
-            model_a = g["red_sm_model"]
-            model_b = g["blue_sm_model"]
+            g = valid_games[0]
             _count_game(model_a, "solo")
             _count_game(model_b, "solo")
             if g["winner"] == "red":
-                solo_results.append((model_a, model_b, 1.0))
+                solo_results.append((g["red_sm_model"], g["blue_sm_model"], 1.0))
             elif g["winner"] == "blue":
-                solo_results.append((model_a, model_b, 0.0))
+                solo_results.append((g["red_sm_model"], g["blue_sm_model"], 0.0))
 
     # Compute BT ratings for solo mode
     if solo_results:

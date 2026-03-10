@@ -14,13 +14,14 @@ from dataclasses import dataclass
 
 import numpy as np
 from scipy.optimize import minimize
+from tqdm import tqdm
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 ELO_CENTER = 1500.0
 ELO_SCALE = 400.0
-REGULARIZATION_STRENGTH = 0.001
+REGULARIZATION_STRENGTH = 0.5
 
 # Type alias for a game result: (model_a_id, model_b_id, outcome)
 # outcome: 1.0 = a wins, 0.0 = b wins, 0.5 = tie
@@ -248,7 +249,7 @@ class BradleyTerry:
         n_games = len(game_results)
         bootstrap_matrix = np.empty((n_bootstrap, n))
 
-        for b in range(n_bootstrap):
+        for b in tqdm(range(n_bootstrap), desc="Bootstrap", unit="iter"):
             idxs = rng.integers(0, n_games, size=n_games)
             resampled = [game_results[i] for i in idxs]
             boot_ratings = BradleyTerry.fit(resampled, model_ids)
