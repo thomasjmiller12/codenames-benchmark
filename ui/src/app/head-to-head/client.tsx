@@ -107,6 +107,29 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
   ).length;
   const bWins = h2hGames.length - aWins;
 
+  // Pair/board stats: group games by pair_id to compute 2-0 vs 1-1 results
+  const pairMap = new Map<number, { aWins: number; bWins: number }>();
+  for (const g of h2hGames) {
+    if (g.pair_id == null) continue;
+    if (!pairMap.has(g.pair_id)) pairMap.set(g.pair_id, { aWins: 0, bWins: 0 });
+    const pair = pairMap.get(g.pair_id)!;
+    const aWon =
+      (g.red_sm_model === a.model_id && g.winner === "red") ||
+      (g.blue_sm_model === a.model_id && g.winner === "blue");
+    if (aWon) pair.aWins++;
+    else pair.bWins++;
+  }
+
+  let pairSweepsA = 0; // A won 2-0
+  let pairSweepsB = 0; // B won 2-0
+  let pairDraws = 0;   // 1-1 split
+  for (const pair of pairMap.values()) {
+    if (pair.aWins === 2) pairSweepsA++;
+    else if (pair.bWins === 2) pairSweepsB++;
+    else if (pair.aWins === 1 && pair.bWins === 1) pairDraws++;
+  }
+  const totalPairs = pairSweepsA + pairSweepsB + pairDraws;
+
   // Comparison stats
   const stats = [
     {
@@ -135,18 +158,6 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
       label: "Win Rate",
       aVal: getWinRate(a.solo_wins, a.solo_games),
       bVal: getWinRate(b.solo_wins, b.solo_games),
-      format: (v: number) => `${v.toFixed(1)}%`,
-    },
-    {
-      label: "Red Win Rate",
-      aVal: getWinRate(a.red_wins, a.red_games),
-      bVal: getWinRate(b.red_wins, b.red_games),
-      format: (v: number) => `${v.toFixed(1)}%`,
-    },
-    {
-      label: "Blue Win Rate",
-      aVal: getWinRate(a.blue_wins, a.blue_games),
-      bVal: getWinRate(b.blue_wins, b.blue_games),
       format: (v: number) => `${v.toFixed(1)}%`,
     },
     {
@@ -227,12 +238,13 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
       {h2hGames.length > 0 && (
         <Card className="bg-card/50">
           <CardContent className="p-5">
+            {/* Game record */}
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-medium text-red-400">
                 {a.display_name}
               </span>
               <span className="text-xs text-muted-foreground">
-                Head-to-Head Record
+                Game Record
               </span>
               <span className="text-sm font-medium text-blue-400">
                 {b.display_name}
@@ -249,6 +261,41 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
                 {aWins} - {bWins}
               </div>
             </div>
+
+            {/* Pair/board stats */}
+            {totalPairs > 0 && (
+              <div className="mt-5 pt-4 border-t border-border/40">
+                <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wider text-center">
+                  Board Pairs ({totalPairs} total)
+                </p>
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3">
+                    <p className="text-2xl font-bold font-mono text-red-400">
+                      {pairSweepsA}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      {a.display_name} 2-0
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-muted/50 border border-border/40 p-3">
+                    <p className="text-2xl font-bold font-mono text-muted-foreground">
+                      {pairDraws}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Split 1-1
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-3">
+                    <p className="text-2xl font-bold font-mono text-blue-400">
+                      {pairSweepsB}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      {b.display_name} 2-0
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

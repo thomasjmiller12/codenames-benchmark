@@ -166,6 +166,7 @@ export async function getGames(): Promise<Game[]> {
     `SELECT game_id, red_sm_model, red_op_model, blue_sm_model, blue_op_model,
             mode, winner, win_condition, total_turns, red_remaining, blue_remaining,
             total_input_tokens, total_output_tokens, total_cost_usd,
+            board_id, pair_id,
             COALESCE(completed_at, started_at, created_at) as completed_at
      FROM games
      WHERE status = 'completed'
@@ -188,6 +189,8 @@ export async function getGames(): Promise<Game[]> {
     total_output_tokens: (col(row, "total_output_tokens") as number) ?? 0,
     total_cost_usd: (col(row, "total_cost_usd") as number) ?? 0,
     completed_at: (col(row, "completed_at") as string) ?? "",
+    board_id: (col(row, "board_id") as number) ?? null,
+    pair_id: (col(row, "pair_id") as number) ?? null,
   }));
 }
 

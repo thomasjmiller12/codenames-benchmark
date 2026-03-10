@@ -46,6 +46,8 @@ export interface Game {
   total_output_tokens: number;
   total_cost_usd: number;
   completed_at: string;
+  board_id: number | null;
+  pair_id: number | null;
 }
 
 export interface Guess {
