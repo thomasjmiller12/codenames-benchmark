@@ -46,49 +46,23 @@ function deriveDisplayName(row: { display_name: string; model_id: string }): str
   return row.display_name;
 }
 
-// CTE fragment: pair_ids that have exactly 2 completed games (complete pairs only)
-const COMPLETE_PAIRS_CTE = `complete_pairs AS (
-  SELECT pair_id FROM games
-  WHERE status = 'completed' AND pair_id IS NOT NULL
-  GROUP BY pair_id HAVING COUNT(*) = 2
-)`;
-
-// Filter clause to restrict to games in complete pairs
-const PAIRED_GAMES_FILTER = `status = 'completed' AND pair_id IN (SELECT pair_id FROM complete_pairs)`;
-
 // ─── Models ─────────────────────────────────────────────────────────────────
 
 export async function getModels(): Promise<Model[]> {
   const db = getDb();
 
-  const [modelsRes, pairedStatsRes, allGameStatsRes, latencyRes, assassinRes] = await Promise.all([
+  const [modelsRes, gameStatsRes, latencyRes, assassinRes, pairStatsRes] = await Promise.all([
     db.execute("SELECT * FROM models ORDER BY solo_rating DESC"),
-    // Paired-only: win/loss counts for competitive fairness
+    // All games: wins, games, red/blue, cost, tokens
     db.execute(
-      `WITH ${COMPLETE_PAIRS_CTE}
-       SELECT
+      `SELECT
          model_id,
          SUM(CASE WHEN role = 'solo' THEN 1 ELSE 0 END) as solo_games,
          SUM(CASE WHEN role = 'solo' AND won = 1 THEN 1 ELSE 0 END) as solo_wins,
          SUM(CASE WHEN role = 'spymaster' THEN 1 ELSE 0 END) as spymaster_games,
          SUM(CASE WHEN role = 'spymaster' AND won = 1 THEN 1 ELSE 0 END) as spymaster_wins,
          SUM(CASE WHEN role = 'operative' THEN 1 ELSE 0 END) as operative_games,
-         SUM(CASE WHEN role = 'operative' AND won = 1 THEN 1 ELSE 0 END) as operative_wins
-       FROM (
-         SELECT red_sm_model as model_id, mode as role,
-                CASE WHEN winner = 'red' THEN 1 ELSE 0 END as won
-         FROM games WHERE ${PAIRED_GAMES_FILTER}
-         UNION ALL
-         SELECT blue_sm_model as model_id, mode as role,
-                CASE WHEN winner = 'blue' THEN 1 ELSE 0 END as won
-         FROM games WHERE ${PAIRED_GAMES_FILTER}
-       )
-       GROUP BY model_id`
-    ),
-    // All games: red/blue, cost, tokens (descriptive / behavioral)
-    db.execute(
-      `SELECT
-         model_id,
+         SUM(CASE WHEN role = 'operative' AND won = 1 THEN 1 ELSE 0 END) as operative_wins,
          SUM(CASE WHEN team = 'red' THEN 1 ELSE 0 END) as red_games,
          SUM(CASE WHEN team = 'red' AND won = 1 THEN 1 ELSE 0 END) as red_wins,
          SUM(CASE WHEN team = 'blue' THEN 1 ELSE 0 END) as blue_games,
@@ -96,13 +70,13 @@ export async function getModels(): Promise<Model[]> {
          SUM(cost) as total_cost,
          AVG(tokens) as avg_tokens
        FROM (
-         SELECT red_sm_model as model_id, 'red' as team,
+         SELECT red_sm_model as model_id, mode as role, 'red' as team,
                 CASE WHEN winner = 'red' THEN 1 ELSE 0 END as won,
                 total_cost_usd as cost,
                 total_input_tokens + total_output_tokens as tokens
          FROM games WHERE status = 'completed'
          UNION ALL
-         SELECT blue_sm_model as model_id, 'blue' as team,
+         SELECT blue_sm_model as model_id, mode as role, 'blue' as team,
                 CASE WHEN winner = 'blue' THEN 1 ELSE 0 END as won,
                 total_cost_usd as cost,
                 total_input_tokens + total_output_tokens as tokens
@@ -121,7 +95,6 @@ export async function getModels(): Promise<Model[]> {
        )
        GROUP BY model_id`
     ),
-    // All games: assassin behavior
     db.execute(
       `SELECT model_id,
               SUM(CASE WHEN assassin_win = 1 THEN 1 ELSE 0 END) as assassin_wins,
@@ -139,31 +112,59 @@ export async function getModels(): Promise<Model[]> {
        )
        GROUP BY model_id`
     ),
+    // Pair-level stats: sweeps (2-0), splits (1-1), losses (0-2) per model
+    db.execute(
+      `SELECT model_id,
+              SUM(CASE WHEN wins = 2 THEN 1 ELSE 0 END) as pair_sweeps,
+              SUM(CASE WHEN wins = 1 AND losses = 1 THEN 1 ELSE 0 END) as pair_splits,
+              SUM(CASE WHEN losses = 2 THEN 1 ELSE 0 END) as pair_losses
+       FROM (
+         SELECT model_id, pair_id, SUM(won) as wins, SUM(1 - won) as losses
+         FROM (
+           SELECT red_sm_model as model_id, pair_id,
+                  CASE WHEN winner = 'red' THEN 1 ELSE 0 END as won
+           FROM games
+           WHERE status = 'completed' AND pair_id IS NOT NULL
+             AND pair_id IN (
+               SELECT pair_id FROM games
+               WHERE status = 'completed' AND pair_id IS NOT NULL
+               GROUP BY pair_id HAVING COUNT(*) = 2
+             )
+           UNION ALL
+           SELECT blue_sm_model as model_id, pair_id,
+                  CASE WHEN winner = 'blue' THEN 1 ELSE 0 END as won
+           FROM games
+           WHERE status = 'completed' AND pair_id IS NOT NULL
+             AND pair_id IN (
+               SELECT pair_id FROM games
+               WHERE status = 'completed' AND pair_id IS NOT NULL
+               GROUP BY pair_id HAVING COUNT(*) = 2
+             )
+         )
+         GROUP BY model_id, pair_id
+       )
+       GROUP BY model_id`
+    ),
   ]);
 
   const rows = modelsRes.rows;
-  const pairedMap = new Map(pairedStatsRes.rows.map((r) => [col(r, "model_id") as string, r]));
-  const allMap = new Map(allGameStatsRes.rows.map((r) => [col(r, "model_id") as string, r]));
+  const statsMap = new Map(gameStatsRes.rows.map((r) => [col(r, "model_id") as string, r]));
   const latencyMap = new Map(latencyRes.rows.map((r) => [col(r, "model_id") as string, r]));
   const assassinMap = new Map(assassinRes.rows.map((r) => [col(r, "model_id") as string, r]));
+  const pairMap = new Map(pairStatsRes.rows.map((r) => [col(r, "model_id") as string, r]));
 
   const visibleRows = rows.filter((row) => !HIDDEN_MODELS.includes(col(row, "model_id") as string));
 
   return visibleRows.map((row) => {
-    const ps = pairedMap.get(col(row, "model_id") as string);
-    const ag = allMap.get(col(row, "model_id") as string);
+    const gs = statsMap.get(col(row, "model_id") as string);
     const ls = latencyMap.get(col(row, "model_id") as string);
     const as_ = assassinMap.get(col(row, "model_id") as string);
-
-    // Competitive stats from paired games
-    const soloGames = (ps ? col(ps, "solo_games") as number : null) ?? (col(row, "solo_games_played") as number) ?? 0;
-    const spymasterGames = (ps ? col(ps, "spymaster_games") as number : null) ?? (col(row, "spymaster_games") as number) ?? 0;
-    const operativeGames = (ps ? col(ps, "operative_games") as number : null) ?? (col(row, "operative_games") as number) ?? 0;
+    const pr = pairMap.get(col(row, "model_id") as string);
+    const soloGames = (gs ? col(gs, "solo_games") as number : null) ?? (col(row, "solo_games_played") as number) ?? 0;
+    const spymasterGames = (gs ? col(gs, "spymaster_games") as number : null) ?? (col(row, "spymaster_games") as number) ?? 0;
+    const operativeGames = (gs ? col(gs, "operative_games") as number : null) ?? (col(row, "operative_games") as number) ?? 0;
     const totalGames = soloGames + spymasterGames + operativeGames;
-
-    // Descriptive stats from all games
-    const totalCost = (ag ? col(ag, "total_cost") as number : null) ?? 0;
-    const allGamesCount = (ag ? (col(ag, "red_games") as number ?? 0) + (col(ag, "blue_games") as number ?? 0) : 0);
+    const totalCost = (gs ? col(gs, "total_cost") as number : null) ?? 0;
 
     return {
       model_id: col(row, "model_id") as string,
@@ -181,18 +182,21 @@ export async function getModels(): Promise<Model[]> {
       operative_games: operativeGames,
       operative_ci_lower: (col(row, "operative_ci_lower") as number) ?? 1500,
       operative_ci_upper: (col(row, "operative_ci_upper") as number) ?? 1500,
-      solo_wins: (ps ? col(ps, "solo_wins") as number : null) ?? 0,
-      spymaster_wins: (ps ? col(ps, "spymaster_wins") as number : null) ?? 0,
-      operative_wins: (ps ? col(ps, "operative_wins") as number : null) ?? 0,
-      red_wins: (ag ? col(ag, "red_wins") as number : null) ?? 0,
-      red_games: (ag ? col(ag, "red_games") as number : null) ?? 0,
-      blue_wins: (ag ? col(ag, "blue_wins") as number : null) ?? 0,
-      blue_games: (ag ? col(ag, "blue_games") as number : null) ?? 0,
+      solo_wins: (gs ? col(gs, "solo_wins") as number : null) ?? 0,
+      spymaster_wins: (gs ? col(gs, "spymaster_wins") as number : null) ?? 0,
+      operative_wins: (gs ? col(gs, "operative_wins") as number : null) ?? 0,
+      red_wins: (gs ? col(gs, "red_wins") as number : null) ?? 0,
+      red_games: (gs ? col(gs, "red_games") as number : null) ?? 0,
+      blue_wins: (gs ? col(gs, "blue_wins") as number : null) ?? 0,
+      blue_games: (gs ? col(gs, "blue_games") as number : null) ?? 0,
       assassin_wins: (as_ ? col(as_, "assassin_wins") as number : null) ?? 0,
       assassin_losses: (as_ ? col(as_, "assassin_losses") as number : null) ?? 0,
+      pair_sweeps: (pr ? col(pr, "pair_sweeps") as number : null) ?? 0,
+      pair_splits: (pr ? col(pr, "pair_splits") as number : null) ?? 0,
+      pair_losses: (pr ? col(pr, "pair_losses") as number : null) ?? 0,
       total_cost_usd: totalCost,
-      avg_cost_per_game: allGamesCount > 0 ? totalCost / allGamesCount : 0,
-      avg_tokens_per_game: (ag ? col(ag, "avg_tokens") as number : null) ?? 0,
+      avg_cost_per_game: totalGames > 0 ? totalCost / totalGames : 0,
+      avg_tokens_per_game: (gs ? col(gs, "avg_tokens") as number : null) ?? 0,
       avg_latency_ms: (ls ? col(ls, "avg_latency_ms") as number : null) ?? 0,
     };
   });

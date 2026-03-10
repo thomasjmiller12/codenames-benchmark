@@ -109,6 +109,7 @@ export function LeaderboardClient({ models }: { models: Model[] }) {
                 <TableHead className="text-xs">Rating</TableHead>
                 <TableHead className="text-xs">Win Rate</TableHead>
                 <TableHead className="text-xs text-right">Games</TableHead>
+                <TableHead className="text-xs text-center">Pairs (W/D/L)</TableHead>
                 <TableHead className="text-xs text-right">Assassin W</TableHead>
                 <TableHead className="text-xs text-right">Assassin L</TableHead>
                 <TableHead className="text-xs text-right">$/Game</TableHead>
@@ -181,6 +182,19 @@ export function LeaderboardClient({ models }: { models: Model[] }) {
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {gamesCount}
+                    </TableCell>
+                    <TableCell className="text-center font-mono text-xs">
+                      {(model.pair_sweeps + model.pair_splits + model.pair_losses) > 0 ? (
+                        <span>
+                          <span className="text-emerald-400">{model.pair_sweeps}W</span>
+                          {" / "}
+                          <span className="text-muted-foreground">{model.pair_splits}D</span>
+                          {" / "}
+                          <span className="text-red-400">{model.pair_losses}L</span>
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm text-emerald-400">
                       {gamesCount > 0
