@@ -660,41 +660,50 @@ export function ModelDetailClient({ model, models, games, ratingHistory }: Props
                     const won =
                       (isRed && game.winner === "red") ||
                       (!isRed && game.winner === "blue");
+                    const gameHref = `/games/${game.game_id}`;
 
                     return (
                       <TableRow
                         key={game.game_id}
-                        className="border-border/30 hover:bg-accent/30"
+                        className="border-border/30 cursor-pointer transition-colors hover:bg-accent/30"
                       >
                         <TableCell className="pl-6 text-xs text-muted-foreground font-mono">
-                          {formatDateTime(game.completed_at)}
+                          <Link href={gameHref} className="block">
+                            {formatDateTime(game.completed_at)}
+                          </Link>
                         </TableCell>
                         <TableCell className="text-sm">
-                          {getModelDisplayName(opponentId, models)}
+                          <Link href={gameHref} className="block">
+                            {getModelDisplayName(opponentId, models)}
+                          </Link>
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={
-                              isRed
-                                ? "border-red-500/40 bg-red-500/10 text-red-400 text-[10px]"
-                                : "border-blue-500/40 bg-blue-500/10 text-blue-400 text-[10px]"
-                            }
-                          >
-                            {isRed ? "Red" : "Blue"}
-                          </Badge>
+                          <Link href={gameHref} className="block">
+                            <Badge
+                              variant="outline"
+                              className={
+                                isRed
+                                  ? "border-red-500/40 bg-red-500/10 text-red-400 text-[10px]"
+                                  : "border-blue-500/40 bg-blue-500/10 text-blue-400 text-[10px]"
+                              }
+                            >
+                              {isRed ? "Red" : "Blue"}
+                            </Badge>
+                          </Link>
                         </TableCell>
                         <TableCell className="text-right pr-6">
-                          <Badge
-                            variant="outline"
-                            className={
-                              won
-                                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400 text-[10px]"
-                                : "border-red-500/40 bg-red-500/10 text-red-400 text-[10px]"
-                            }
-                          >
-                            {won ? "W" : "L"}
-                          </Badge>
+                          <Link href={gameHref} className="block">
+                            <Badge
+                              variant="outline"
+                              className={
+                                won
+                                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400 text-[10px]"
+                                  : "border-red-500/40 bg-red-500/10 text-red-400 text-[10px]"
+                              }
+                            >
+                              {won ? "W" : "L"}
+                            </Badge>
+                          </Link>
                         </TableCell>
                       </TableRow>
                     );

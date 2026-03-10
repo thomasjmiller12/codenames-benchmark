@@ -23,7 +23,7 @@ export function RecentGamesTable({
     return (
       <Card className="bg-card/50">
         <CardHeader>
-          <CardTitle className="text-base font-semibold">Recent Games</CardTitle>
+          <CardTitle className="text-base font-semibold">Top Recent Games</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground py-8 text-center">
@@ -34,12 +34,22 @@ export function RecentGamesTable({
     );
   }
 
-  const recent = games.slice(0, 10);
+  // Show recent games between top-rated models (top half by solo Elo)
+  const sortedModels = [...models].sort((a, b) => b.solo_rating - a.solo_rating);
+  const topCount = Math.max(2, Math.ceil(sortedModels.length / 2));
+  const topModelIds = new Set(sortedModels.slice(0, topCount).map((m) => m.model_id));
+
+  const topGames = games.filter(
+    (g) => topModelIds.has(g.red_sm_model) && topModelIds.has(g.blue_sm_model)
+  );
+
+  // Fall back to all games if not enough top games
+  const recent = (topGames.length >= 5 ? topGames : games).slice(0, 10);
 
   return (
     <Card className="bg-card/50">
       <CardHeader>
-        <CardTitle className="text-base font-semibold">Recent Games</CardTitle>
+        <CardTitle className="text-base font-semibold">Top Recent Games</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         <Table>

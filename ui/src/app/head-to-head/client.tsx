@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -392,56 +393,69 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
                       ? game.red_sm_model
                       : game.blue_sm_model;
                   const aWon = winnerModel === a.model_id;
+                  const gameHref = `/games/${game.game_id}`;
 
                   return (
                     <TableRow
                       key={game.game_id}
-                      className="border-border/30 hover:bg-accent/30"
+                      className="border-border/30 cursor-pointer transition-colors hover:bg-accent/30"
                     >
                       <TableCell className="pl-6 text-xs text-muted-foreground font-mono">
-                        {formatDateTime(game.completed_at)}
+                        <Link href={gameHref} className="block">
+                          {formatDateTime(game.completed_at)}
+                        </Link>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={
-                            aIsRed
-                              ? "border-red-500/40 bg-red-500/10 text-red-400 text-[10px]"
-                              : "border-blue-500/40 bg-blue-500/10 text-blue-400 text-[10px]"
-                          }
-                        >
-                          {aIsRed ? "Red" : "Blue"}
-                        </Badge>
+                        <Link href={gameHref} className="block">
+                          <Badge
+                            variant="outline"
+                            className={
+                              aIsRed
+                                ? "border-red-500/40 bg-red-500/10 text-red-400 text-[10px]"
+                                : "border-blue-500/40 bg-blue-500/10 text-blue-400 text-[10px]"
+                            }
+                          >
+                            {aIsRed ? "Red" : "Blue"}
+                          </Badge>
+                        </Link>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={
-                            !aIsRed
-                              ? "border-red-500/40 bg-red-500/10 text-red-400 text-[10px]"
-                              : "border-blue-500/40 bg-blue-500/10 text-blue-400 text-[10px]"
-                          }
-                        >
-                          {!aIsRed ? "Red" : "Blue"}
-                        </Badge>
+                        <Link href={gameHref} className="block">
+                          <Badge
+                            variant="outline"
+                            className={
+                              !aIsRed
+                                ? "border-red-500/40 bg-red-500/10 text-red-400 text-[10px]"
+                                : "border-blue-500/40 bg-blue-500/10 text-blue-400 text-[10px]"
+                            }
+                          >
+                            {!aIsRed ? "Red" : "Blue"}
+                          </Badge>
+                        </Link>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={
-                            aWon
-                              ? "border-red-500/40 bg-red-500/10 text-red-400 text-[10px]"
-                              : "border-blue-500/40 bg-blue-500/10 text-blue-400 text-[10px]"
-                          }
-                        >
-                          {aWon ? a.display_name : b.display_name}
-                        </Badge>
+                        <Link href={gameHref} className="block">
+                          <Badge
+                            variant="outline"
+                            className={
+                              aWon
+                                ? "border-red-500/40 bg-red-500/10 text-red-400 text-[10px]"
+                                : "border-blue-500/40 bg-blue-500/10 text-blue-400 text-[10px]"
+                            }
+                          >
+                            {aWon ? a.display_name : b.display_name}
+                          </Badge>
+                        </Link>
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm">
-                        {game.total_turns}
+                        <Link href={gameHref} className="block">
+                          {game.total_turns}
+                        </Link>
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm text-muted-foreground pr-6">
-                        {formatCost(game.total_cost_usd)}
+                        <Link href={gameHref} className="block">
+                          {formatCost(game.total_cost_usd)}
+                        </Link>
                       </TableCell>
                     </TableRow>
                   );
