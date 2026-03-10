@@ -41,6 +41,7 @@ export interface BTRating {
 
 export interface Game {
   game_id: string;
+  experiment_id: string | null;
   red_sm_model: string;
   red_op_model: string;
   blue_sm_model: string;

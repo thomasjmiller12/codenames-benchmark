@@ -9,25 +9,30 @@ export interface PairInfo {
   label: string | null;
 }
 
+/** Composite key for a pair: experiment_id + pair_id */
+function pairKey(g: Game): string | null {
+  if (g.pair_id == null) return null;
+  return `${g.experiment_id ?? ""}:${g.pair_id}`;
+}
+
 /**
- * Build a map of pair_id -> PairInfo from a list of games.
+ * Build a map of compositeKey -> PairInfo from a list of games.
  * Only includes pairs with exactly 2 completed games.
  */
-export function buildPairMap(games: Game[]): Map<number, PairInfo> {
-  const map = new Map<number, Game[]>();
+export function buildPairMap(games: Game[]): Map<string, PairInfo> {
+  const map = new Map<string, Game[]>();
   for (const g of games) {
-    if (g.pair_id == null) continue;
-    if (!map.has(g.pair_id)) map.set(g.pair_id, []);
-    map.get(g.pair_id)!.push(g);
+    const key = pairKey(g);
+    if (key == null) continue;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(g);
   }
 
-  const result = new Map<number, PairInfo>();
-  for (const [pairId, pairGames] of map) {
+  const result = new Map<string, PairInfo>();
+  for (const [key, pairGames] of map) {
     if (pairGames.length !== 2) continue;
 
-    // Determine which model is "model A" (red_sm_model in first game)
     const g1 = pairGames[0];
-    const g2 = pairGames[1];
     const modelA = g1.red_sm_model;
     const modelB = g1.blue_sm_model;
 
@@ -40,8 +45,8 @@ export function buildPairMap(games: Game[]): Map<number, PairInfo> {
       else bWins++;
     }
 
-    result.set(pairId, {
-      pair_id: pairId,
+    result.set(key, {
+      pair_id: pairGames[0].pair_id!,
       games: pairGames,
       sweepWinner: aWins === 2 ? modelA : bWins === 2 ? modelB : null,
       label: aWins === 2 || bWins === 2 ? "2-0" : "1-1",
@@ -53,15 +58,15 @@ export function buildPairMap(games: Game[]): Map<number, PairInfo> {
 
 /**
  * Get the pair result label for a specific game relative to a specific model.
- * Returns { label: "2-0" | "1-1" | "0-2", variant: "sweep" | "split" | "swept" } or null.
  */
 export function getPairResultForModel(
   game: Game,
   modelId: string,
-  pairMap: Map<number, PairInfo>
+  pairMap: Map<string, PairInfo>
 ): { label: string; variant: "sweep" | "split" | "swept" } | null {
-  if (game.pair_id == null) return null;
-  const pair = pairMap.get(game.pair_id);
+  const key = pairKey(game);
+  if (key == null) return null;
+  const pair = pairMap.get(key);
   if (!pair) return null;
 
   let modelWins = 0;
@@ -80,20 +85,20 @@ export function getPairResultForModel(
 
 /**
  * Get the pair result label for a game generically (not relative to a specific model).
- * Shows which team swept or if split.
  */
 export function getPairResultGeneric(
   game: Game,
-  pairMap: Map<number, PairInfo>
+  pairMap: Map<string, PairInfo>
 ): { label: string; variant: "sweep" | "split" | "swept"; sweepModel?: string } | null {
-  if (game.pair_id == null) return null;
-  const pair = pairMap.get(game.pair_id);
+  const key = pairKey(game);
+  if (key == null) return null;
+  const pair = pairMap.get(key);
   if (!pair) return null;
 
   if (pair.sweepWinner) {
     return {
       label: "2-0",
-      variant: pair.sweepWinner === game.red_sm_model || pair.sweepWinner === game.blue_sm_model ? "sweep" : "sweep",
+      variant: "sweep",
       sweepModel: pair.sweepWinner,
     };
   }

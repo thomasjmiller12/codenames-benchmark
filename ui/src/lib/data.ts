@@ -113,35 +113,36 @@ export async function getModels(): Promise<Model[]> {
        GROUP BY model_id`
     ),
     // Pair-level stats: sweeps (2-0), splits (1-1), losses (0-2) per model
+    // pair_id resets per experiment, so the unique pair key is (experiment_id, pair_id)
     db.execute(
       `SELECT model_id,
               SUM(CASE WHEN wins = 2 THEN 1 ELSE 0 END) as pair_sweeps,
               SUM(CASE WHEN wins = 1 AND losses = 1 THEN 1 ELSE 0 END) as pair_splits,
               SUM(CASE WHEN losses = 2 THEN 1 ELSE 0 END) as pair_losses
        FROM (
-         SELECT model_id, pair_id, SUM(won) as wins, SUM(1 - won) as losses
+         SELECT model_id, experiment_id, pair_id, SUM(won) as wins, SUM(1 - won) as losses
          FROM (
-           SELECT red_sm_model as model_id, pair_id,
+           SELECT red_sm_model as model_id, experiment_id, pair_id,
                   CASE WHEN winner = 'red' THEN 1 ELSE 0 END as won
            FROM games
            WHERE status = 'completed' AND pair_id IS NOT NULL
-             AND pair_id IN (
-               SELECT pair_id FROM games
+             AND (experiment_id, pair_id) IN (
+               SELECT experiment_id, pair_id FROM games
                WHERE status = 'completed' AND pair_id IS NOT NULL
-               GROUP BY pair_id HAVING COUNT(*) = 2
+               GROUP BY experiment_id, pair_id HAVING COUNT(*) = 2
              )
            UNION ALL
-           SELECT blue_sm_model as model_id, pair_id,
+           SELECT blue_sm_model as model_id, experiment_id, pair_id,
                   CASE WHEN winner = 'blue' THEN 1 ELSE 0 END as won
            FROM games
            WHERE status = 'completed' AND pair_id IS NOT NULL
-             AND pair_id IN (
-               SELECT pair_id FROM games
+             AND (experiment_id, pair_id) IN (
+               SELECT experiment_id, pair_id FROM games
                WHERE status = 'completed' AND pair_id IS NOT NULL
-               GROUP BY pair_id HAVING COUNT(*) = 2
+               GROUP BY experiment_id, pair_id HAVING COUNT(*) = 2
              )
          )
-         GROUP BY model_id, pair_id
+         GROUP BY model_id, experiment_id, pair_id
        )
        GROUP BY model_id`
     ),
@@ -208,7 +209,7 @@ export async function getGames(): Promise<Game[]> {
   const db = getDb();
 
   const res = await db.execute(
-    `SELECT game_id, red_sm_model, red_op_model, blue_sm_model, blue_op_model,
+    `SELECT game_id, experiment_id, red_sm_model, red_op_model, blue_sm_model, blue_op_model,
             mode, winner, win_condition, total_turns, red_remaining, blue_remaining,
             total_input_tokens, total_output_tokens, total_cost_usd,
             board_id, pair_id,
@@ -220,6 +221,7 @@ export async function getGames(): Promise<Game[]> {
 
   return res.rows.map((row) => ({
     game_id: col(row, "game_id") as string,
+    experiment_id: (col(row, "experiment_id") as string) ?? null,
     red_sm_model: col(row, "red_sm_model") as string,
     red_op_model: (col(row, "red_op_model") as string) ?? (col(row, "red_sm_model") as string),
     blue_sm_model: col(row, "blue_sm_model") as string,
@@ -262,13 +264,14 @@ export async function getGameReplay(gameId: string): Promise<GameReplay | null> 
   const game = gameRes.rows[0];
   if (!game) return null;
 
-  // Find pair partner
+  // Find pair partner (pair_id is unique only within an experiment)
   const pairId = col(game, "pair_id") as number | null;
+  const experimentId = col(game, "experiment_id") as string | null;
   let partnerGameId: string | null = null;
-  if (pairId != null) {
+  if (pairId != null && experimentId != null) {
     const partnerRes = await db.execute({
-      sql: `SELECT game_id FROM games WHERE pair_id = ? AND game_id != ? AND status = 'completed'`,
-      args: [pairId, gameId],
+      sql: `SELECT game_id FROM games WHERE experiment_id = ? AND pair_id = ? AND game_id != ? AND status = 'completed'`,
+      args: [experimentId, pairId, gameId],
     });
     if (partnerRes.rows.length > 0) {
       partnerGameId = col(partnerRes.rows[0], "game_id") as string;
@@ -419,9 +422,9 @@ export async function getOverallStats() {
       db.execute("SELECT COUNT(*) as count FROM models"),
       db.execute(
         `SELECT COUNT(*) as count FROM (
-           SELECT pair_id FROM games
+           SELECT experiment_id, pair_id FROM games
            WHERE status = 'completed' AND pair_id IS NOT NULL
-           GROUP BY pair_id HAVING COUNT(*) = 2
+           GROUP BY experiment_id, pair_id HAVING COUNT(*) = 2
          )`
       ),
     ]);
