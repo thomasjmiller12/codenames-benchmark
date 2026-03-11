@@ -99,3 +99,12 @@ CREATE TABLE IF NOT EXISTS turns (
 
 CREATE INDEX IF NOT EXISTS idx_games_experiment ON games(experiment_id);
 CREATE INDEX IF NOT EXISTS idx_turns_game ON turns(game_id);
+
+-- Indexes for UI query performance
+CREATE INDEX IF NOT EXISTS idx_games_status ON games(status);
+CREATE INDEX IF NOT EXISTS idx_games_red_sm ON games(red_sm_model);
+CREATE INDEX IF NOT EXISTS idx_games_blue_sm ON games(blue_sm_model);
+CREATE INDEX IF NOT EXISTS idx_games_board ON games(board_id);
+CREATE INDEX IF NOT EXISTS idx_games_pair ON games(experiment_id, pair_id);
+CREATE INDEX IF NOT EXISTS idx_turns_sm_model ON turns(sm_model);
+CREATE INDEX IF NOT EXISTS idx_turns_op_model ON turns(op_model);

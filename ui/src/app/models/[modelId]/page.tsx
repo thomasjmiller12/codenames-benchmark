@@ -2,7 +2,7 @@ import { getModels, getGames, getRatingHistory } from "@/lib/data";
 import { ModelDetailClient } from "./client";
 import { notFound } from "next/navigation";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300; // re-fetch at most every 5 minutes
 
 export default async function ModelDetailPage({
   params,

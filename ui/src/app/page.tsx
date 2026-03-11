@@ -3,12 +3,12 @@ import { RecentGamesTable } from "@/components/dashboard/recent-games-table";
 import { WinConditionPie, RatingDistribution } from "@/components/dashboard/charts";
 import { getModels, getGames, getOverallStats } from "@/lib/data";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300; // re-fetch at most every 5 minutes
 
 export default async function DashboardPage() {
   const [models, games, overallStats] = await Promise.all([
     getModels(),
-    getGames(),
+    getGames(100), // Dashboard only shows ~10 recent games
     getOverallStats(),
   ]);
 

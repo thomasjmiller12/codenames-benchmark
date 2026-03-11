@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getModelDisplayName, formatCost } from "@/lib/format";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300; // re-fetch at most every 5 minutes
 
 export default async function GameReplayPage({
   params,

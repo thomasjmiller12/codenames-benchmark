@@ -205,19 +205,20 @@ export async function getModels(): Promise<Model[]> {
 
 // ─── Games ──────────────────────────────────────────────────────────────────
 
-export async function getGames(): Promise<Game[]> {
+export async function getGames(limit?: number): Promise<Game[]> {
   const db = getDb();
 
-  const res = await db.execute(
-    `SELECT game_id, experiment_id, red_sm_model, red_op_model, blue_sm_model, blue_op_model,
+  const sql = `SELECT game_id, experiment_id, red_sm_model, red_op_model, blue_sm_model, blue_op_model,
             mode, winner, win_condition, total_turns, red_remaining, blue_remaining,
             total_input_tokens, total_output_tokens, total_cost_usd,
             board_id, pair_id,
             COALESCE(completed_at, started_at, created_at) as completed_at
      FROM games
      WHERE status = 'completed'
-     ORDER BY COALESCE(completed_at, started_at, created_at) DESC`
-  );
+     ORDER BY COALESCE(completed_at, started_at, created_at) DESC
+     ${limit ? `LIMIT ${limit}` : ""}`;
+
+  const res = await db.execute(sql);
 
   return res.rows.map((row) => ({
     game_id: col(row, "game_id") as string,
