@@ -57,18 +57,19 @@ export function RecentGamesTable({
         <CardTitle className="text-base font-semibold">Top Recent Games</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="border-border/50 hover:bg-transparent">
-              <TableHead className="pl-6 text-xs">Date</TableHead>
-              <TableHead className="text-xs">Red Team</TableHead>
+              <TableHead className="pl-4 sm:pl-6 text-xs hidden sm:table-cell">Date</TableHead>
+              <TableHead className="pl-4 sm:pl-0 text-xs">Red Team</TableHead>
               <TableHead className="text-xs">Blue Team</TableHead>
               <TableHead className="text-xs">Result</TableHead>
-              <TableHead className="text-xs">Pair</TableHead>
-              <TableHead className="text-xs">Condition</TableHead>
-              <TableHead className="text-xs text-right">Turns</TableHead>
-              <TableHead className="text-xs text-right">Cost</TableHead>
-              <TableHead className="text-xs text-right pr-6"></TableHead>
+              <TableHead className="text-xs hidden md:table-cell">Pair</TableHead>
+              <TableHead className="text-xs hidden md:table-cell">Condition</TableHead>
+              <TableHead className="text-xs text-right hidden sm:table-cell">Turns</TableHead>
+              <TableHead className="text-xs text-right hidden lg:table-cell">Cost</TableHead>
+              <TableHead className="text-xs text-right pr-4 sm:pr-6"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -80,21 +81,21 @@ export function RecentGamesTable({
                   key={game.game_id}
                   className="border-border/30 cursor-pointer transition-colors hover:bg-accent/30"
                 >
-                  <TableCell className="pl-6 text-xs text-muted-foreground font-mono">
+                  <TableCell className="pl-4 sm:pl-6 text-xs text-muted-foreground font-mono hidden sm:table-cell">
                     <Link href={`/games/${game.game_id}`} className="block">
                       {formatDateTime(game.completed_at)}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-sm">
+                  <TableCell className="pl-4 sm:pl-0 text-sm">
                     <Link href={`/games/${game.game_id}`} className="flex items-center">
-                      <span className="inline-block h-2 w-2 rounded-full bg-red-500 mr-2" />
-                      {getModelDisplayName(game.red_sm_model, models)}
+                      <span className="inline-block h-2 w-2 rounded-full bg-red-500 mr-2 shrink-0" />
+                      <span className="truncate">{getModelDisplayName(game.red_sm_model, models)}</span>
                     </Link>
                   </TableCell>
                   <TableCell className="text-sm">
                     <Link href={`/games/${game.game_id}`} className="flex items-center">
-                      <span className="inline-block h-2 w-2 rounded-full bg-blue-500 mr-2" />
-                      {getModelDisplayName(game.blue_sm_model, models)}
+                      <span className="inline-block h-2 w-2 rounded-full bg-blue-500 mr-2 shrink-0" />
+                      <span className="truncate">{getModelDisplayName(game.blue_sm_model, models)}</span>
                     </Link>
                   </TableCell>
                   <TableCell>
@@ -111,7 +112,7 @@ export function RecentGamesTable({
                       </Badge>
                     </Link>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     <Link href={`/games/${game.game_id}`} className="block">
                       {pairResult ? (
                         <PairResultBadge label={pairResult.label} variant={pairResult.variant} />
@@ -120,7 +121,7 @@ export function RecentGamesTable({
                       )}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
+                  <TableCell className="text-xs text-muted-foreground hidden md:table-cell">
                     <Link href={`/games/${game.game_id}`} className="block">
                       {game.win_condition === "all_words"
                         ? "All words"
@@ -129,17 +130,17 @@ export function RecentGamesTable({
                         : "Turn limit"}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-right text-sm font-mono">
+                  <TableCell className="text-right text-sm font-mono hidden sm:table-cell">
                     <Link href={`/games/${game.game_id}`} className="block">
                       {game.total_turns}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-right text-sm font-mono text-muted-foreground">
+                  <TableCell className="text-right text-sm font-mono text-muted-foreground hidden lg:table-cell">
                     <Link href={`/games/${game.game_id}`} className="block">
                       {formatCost(game.total_cost_usd)}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-right pr-6">
+                  <TableCell className="text-right pr-4 sm:pr-6">
                     <Link
                       href={`/games/${game.game_id}`}
                       className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
@@ -153,6 +154,7 @@ export function RecentGamesTable({
             })}
           </TableBody>
         </Table>
+        </div>
       </CardContent>
     </Card>
   );

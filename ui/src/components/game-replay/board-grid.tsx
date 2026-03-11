@@ -15,9 +15,9 @@ interface BoardGridProps {
 
 /** Scale text down for long words so they always fit the card width */
 function wordSizeClass(word: string) {
-  if (word.length >= 10) return "text-[9px] tracking-wide";
-  if (word.length >= 8) return "text-[10px] tracking-wide";
-  return "text-[11px] tracking-wider";
+  if (word.length >= 10) return "text-[7px] sm:text-[8px] md:text-[9px] tracking-wide";
+  if (word.length >= 8) return "text-[8px] sm:text-[9px] md:text-[10px] tracking-wide";
+  return "text-[9px] sm:text-[10px] md:text-[11px] tracking-wider";
 }
 
 export function BoardGrid({
@@ -28,7 +28,7 @@ export function BoardGrid({
   spymasterView,
 }: BoardGridProps) {
   return (
-    <div className="grid grid-cols-5 gap-3">
+    <div className="grid grid-cols-5 gap-1.5 sm:gap-3">
       {words.map((word) => {
         const cardType = keyCard[word];
         const isRevealed = revealedWords.has(word);
@@ -40,7 +40,7 @@ export function BoardGrid({
           <div
             key={word}
             className={cn(
-              "card-flip relative h-[88px] rounded-xl",
+              "card-flip relative h-[60px] sm:h-[76px] md:h-[88px] rounded-lg sm:rounded-xl",
               isActive && "glow-active"
             )}
           >

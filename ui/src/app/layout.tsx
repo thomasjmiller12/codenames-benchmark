@@ -29,12 +29,17 @@ export default async function RootLayout({
 
   return (
     <html lang="en" className="dark">
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+      </head>
       <body className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}>
         <TooltipProvider>
-          <Sidebar totalGames={stats.totalGames} totalModels={stats.totalModels} />
-          <main className="ml-60 min-h-screen">
-            <div className="mx-auto max-w-7xl px-6 py-8">{children}</div>
-          </main>
+          <div className="flex min-h-screen">
+            <Sidebar totalGames={stats.totalGames} totalModels={stats.totalModels} />
+            <main className="flex-1 min-w-0 pt-14 md:pt-0">
+              <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">{children}</div>
+            </main>
+          </div>
         </TooltipProvider>
       </body>
     </html>

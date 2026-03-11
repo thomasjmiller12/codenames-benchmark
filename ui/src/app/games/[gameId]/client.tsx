@@ -134,7 +134,7 @@ function SingleReplay({
     <>
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
         <div className="space-y-4">
-          <div className="flex items-center justify-between rounded-xl border border-border/50 bg-card/40 px-5 py-3">
+          <div className="flex items-center justify-between rounded-xl border border-border/50 bg-card/40 px-3 sm:px-5 py-2.5 sm:py-3 gap-2">
             {currentTurn ? (
               <div className="flex items-center gap-3">
                 <div
@@ -180,7 +180,7 @@ function SingleReplay({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border/50 bg-gradient-to-br from-amber-950/20 via-card/40 to-card/60 p-6">
+          <div className="rounded-xl sm:rounded-2xl border border-border/50 bg-gradient-to-br from-amber-950/20 via-card/40 to-card/60 p-2 sm:p-4 md:p-6">
             <BoardGrid
               words={replay.board.words}
               keyCard={replay.board.key_card}
@@ -280,7 +280,7 @@ function PairSummary({
           <h3 className="text-sm font-semibold mb-4 text-muted-foreground uppercase tracking-wider text-center">
             Shared Board (Spymaster View)
           </h3>
-          <div className="rounded-2xl border border-border/50 bg-gradient-to-br from-amber-950/20 via-card/40 to-card/60 p-6">
+          <div className="rounded-xl sm:rounded-2xl border border-border/50 bg-gradient-to-br from-amber-950/20 via-card/40 to-card/60 p-2 sm:p-4 md:p-6">
             <BoardGrid
               words={board.words}
               keyCard={board.key_card}

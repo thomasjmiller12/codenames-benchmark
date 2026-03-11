@@ -24,7 +24,7 @@ export function TurnTimeline({
   currentGuessIndex,
 }: TurnTimelineProps) {
   return (
-    <ScrollArea className="h-[520px] pr-4">
+    <ScrollArea className="h-[300px] sm:h-[400px] xl:h-[520px] pr-4">
       <div className="space-y-3">
         {turns.map((turn, tIdx) => {
           const isCurrentTurn = tIdx === currentTurnIndex;

@@ -202,7 +202,7 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
       </div>
 
       {/* Model selectors */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
         <div className="flex-1">
           <label className="text-xs text-red-400 font-medium mb-1.5 block uppercase tracking-wider">
             Model A
@@ -221,7 +221,7 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
           </Select>
         </div>
 
-        <div className="flex items-center justify-center pt-5">
+        <div className="flex items-center justify-center sm:pt-5">
           <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card">
             <Swords className="h-4 w-4 text-muted-foreground" />
           </div>
@@ -280,28 +280,28 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
                 <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wider text-center">
                   Board Pairs ({totalPairs} total)
                 </p>
-                <div className="grid grid-cols-3 gap-3 text-center">
-                  <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3">
-                    <p className="text-2xl font-bold font-mono text-red-400">
+                <div className="grid grid-cols-3 gap-2 sm:gap-3 text-center">
+                  <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-2 sm:p-3">
+                    <p className="text-xl sm:text-2xl font-bold font-mono text-red-400">
                       {pairSweepsA}
                     </p>
-                    <p className="text-[11px] text-muted-foreground mt-1">
+                    <p className="text-[10px] sm:text-[11px] text-muted-foreground mt-1 truncate">
                       {a.display_name} 2-0
                     </p>
                   </div>
-                  <div className="rounded-lg bg-muted/50 border border-border/40 p-3">
-                    <p className="text-2xl font-bold font-mono text-muted-foreground">
+                  <div className="rounded-lg bg-muted/50 border border-border/40 p-2 sm:p-3">
+                    <p className="text-xl sm:text-2xl font-bold font-mono text-muted-foreground">
                       {pairDraws}
                     </p>
-                    <p className="text-[11px] text-muted-foreground mt-1">
+                    <p className="text-[10px] sm:text-[11px] text-muted-foreground mt-1">
                       Split 1-1
                     </p>
                   </div>
-                  <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-3">
-                    <p className="text-2xl font-bold font-mono text-blue-400">
+                  <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-2 sm:p-3">
+                    <p className="text-xl sm:text-2xl font-bold font-mono text-blue-400">
                       {pairSweepsB}
                     </p>
-                    <p className="text-[11px] text-muted-foreground mt-1">
+                    <p className="text-[10px] sm:text-[11px] text-muted-foreground mt-1 truncate">
                       {b.display_name} 2-0
                     </p>
                   </div>
@@ -433,17 +433,18 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="border-border/50 hover:bg-transparent">
-                  <TableHead className="pl-6 text-xs">Date</TableHead>
+                  <TableHead className="pl-4 sm:pl-6 text-xs hidden sm:table-cell">Date</TableHead>
                   <TableHead className="text-xs">{a.display_name}</TableHead>
                   <TableHead className="text-xs">{b.display_name}</TableHead>
                   <TableHead className="text-xs">Winner</TableHead>
-                  <TableHead className="text-xs">Pair</TableHead>
-                  <TableHead className="text-xs text-right">Turns</TableHead>
-                  <TableHead className="text-xs text-right">Cost</TableHead>
-                  <TableHead className="text-xs text-right pr-6"></TableHead>
+                  <TableHead className="text-xs hidden md:table-cell">Pair</TableHead>
+                  <TableHead className="text-xs text-right hidden sm:table-cell">Turns</TableHead>
+                  <TableHead className="text-xs text-right hidden md:table-cell">Cost</TableHead>
+                  <TableHead className="text-xs text-right pr-4 sm:pr-6"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -471,7 +472,7 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
                         isNewPairGroup && idx > 0 ? "border-t-2 border-t-border/60" : ""
                       } ${isPairSecond ? "bg-muted/10" : ""}`}
                     >
-                      <TableCell className="pl-6 text-xs text-muted-foreground font-mono">
+                      <TableCell className="pl-4 sm:pl-6 text-xs text-muted-foreground font-mono hidden sm:table-cell">
                         <Link href={gameHref} className="block">
                           {formatDateTime(game.completed_at)}
                         </Link>
@@ -518,7 +519,7 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
                           </Badge>
                         </Link>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden md:table-cell">
                         <Link href={gameHref} className="block">
                           {pairResult ? (
                             <PairResultBadge label={pairResult.label} variant={pairResult.variant} />
@@ -527,17 +528,17 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
                           )}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
+                      <TableCell className="text-right font-mono text-sm hidden sm:table-cell">
                         <Link href={gameHref} className="block">
                           {game.total_turns}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                      <TableCell className="text-right font-mono text-sm text-muted-foreground hidden md:table-cell">
                         <Link href={gameHref} className="block">
                           {formatCost(game.total_cost_usd)}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-right pr-6">
+                      <TableCell className="text-right pr-4 sm:pr-6">
                         <Link
                           href={gameHref}
                           className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
@@ -551,6 +552,7 @@ export function HeadToHeadClient({ models, games, ratingHistory }: Props) {
                 })}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       )}
