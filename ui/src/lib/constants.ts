@@ -68,7 +68,4 @@ export const CHART_COLORS = [
 
 export const ELO_BASELINE = 1500;
 
-export const HIDDEN_MODELS: string[] = [
-  "moonshotai/kimi-k2.5",
-  "inception/mercury-2",
-];
+export const HIDDEN_MODELS: string[] = [];
