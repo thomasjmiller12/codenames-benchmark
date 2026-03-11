@@ -76,7 +76,7 @@ export function InsightsClient({ data }: Props) {
   const turnsWin = useMemo(
     () =>
       [...data.turnsToWin]
-        .sort((a, b) => a.avg_turns_to_win - b.avg_turns_to_win)
+        .sort((a, b) => b.solo_rating - a.solo_rating)
         .map((d) => ({ ...d, short_name: shortName(d.display_name) })),
     [data.turnsToWin]
   );
@@ -97,7 +97,7 @@ export function InsightsClient({ data }: Props) {
   const assassin = useMemo(
     () =>
       [...data.assassinRate]
-        .sort((a, b) => a.assassin_rate - b.assassin_rate)
+        .sort((a, b) => b.solo_rating - a.solo_rating)
         .map((d) => ({
           ...d,
           short_name: shortName(d.display_name),
@@ -109,7 +109,7 @@ export function InsightsClient({ data }: Props) {
   const accuracy = useMemo(
     () =>
       [...data.guessAccuracy]
-        .sort((a, b) => b.accuracy - a.accuracy)
+        .sort((a, b) => b.solo_rating - a.solo_rating)
         .map((d) => ({
           ...d,
           short_name: shortName(d.display_name),
@@ -121,7 +121,7 @@ export function InsightsClient({ data }: Props) {
   const comeback = useMemo(
     () =>
       [...data.comebackRate]
-        .sort((a, b) => b.comeback_rate - a.comeback_rate)
+        .sort((a, b) => b.solo_rating - a.solo_rating)
         .map((d) => ({
           ...d,
           short_name: shortName(d.display_name),
@@ -133,7 +133,7 @@ export function InsightsClient({ data }: Props) {
   const obedience = useMemo(
     () =>
       [...data.operativeObedience]
-        .sort((a, b) => b.usage_ratio - a.usage_ratio)
+        .sort((a, b) => b.solo_rating - a.solo_rating)
         .map((d) => ({
           ...d,
           short_name: shortName(d.display_name),
