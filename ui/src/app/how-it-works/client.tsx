@@ -95,12 +95,12 @@ export function HowItWorksClient() {
       </SectionWrapper>
 
       {/* Section 3: LLM as Player */}
-      <SectionWrapper id="llm" ref={registerRef("llm")} wide>
+      <SectionWrapper id="llm" ref={registerRef("llm")}>
         <div className="space-y-6">
           <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
             Teaching AI the Rules
           </h2>
-          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-3xl">
+          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
             Each LLM receives the current game state as a structured prompt and responds with a JSON action —
             a clue (word + number) for spymasters, or a guess for operatives. Invalid clues get retry
             feedback up to 3 times. Structured output is enforced via the{" "}
@@ -111,12 +111,12 @@ export function HowItWorksClient() {
       </SectionWrapper>
 
       {/* Section 4: Fair Matchups */}
-      <SectionWrapper id="fairness" ref={registerRef("fairness")} wide>
+      <SectionWrapper id="fairness" ref={registerRef("fairness")}>
         <div className="space-y-6">
           <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
             Ensuring Fairness
           </h2>
-          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-3xl">
+          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
             Every matchup is played <strong className="text-foreground">twice on the same board</strong> with
             swapped team colors, eliminating first-move and color advantage. These two games form
             a <strong className="text-foreground">pair</strong> — the unit of competition. A model must win
