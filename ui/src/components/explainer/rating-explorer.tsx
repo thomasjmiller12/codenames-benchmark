@@ -148,11 +148,29 @@ export function RatingExplorer() {
       </div>
 
       {/* Formula */}
-      <div className="rounded-xl border border-border bg-card/50 px-4 py-3 text-center">
-        <div className="text-sm font-mono text-muted-foreground leading-relaxed">
-          P(A beats B) = γ<sub>A</sub> / (γ<sub>A</sub> + γ<sub>B</sub> + θ·√(γ<sub>A</sub>·γ<sub>B</sub>))
+      <div className="rounded-xl border border-border bg-card/50 px-5 py-5 text-center space-y-3">
+        <div className="flex items-center justify-center gap-3 text-foreground">
+          <span className="text-sm italic">P</span>
+          <span className="text-sm text-muted-foreground">(A beats B)</span>
+          <span className="text-sm text-muted-foreground">=</span>
+          <div className="flex flex-col items-center">
+            <span className="border-b border-muted-foreground/40 px-3 pb-1.5 text-sm font-medium tracking-wide">
+              <span className="italic">γ</span><span className="text-[10px] align-sub">A</span>
+            </span>
+            <span className="pt-1.5 text-sm text-muted-foreground tracking-wide">
+              <span className="italic">γ</span><span className="text-[10px] align-sub">A</span>
+              {" + "}
+              <span className="italic">γ</span><span className="text-[10px] align-sub">B</span>
+              {" + "}
+              <span className="italic">θ</span>
+              {" · "}
+              √(<span className="italic">γ</span><span className="text-[10px] align-sub">A</span>
+              {" · "}
+              <span className="italic">γ</span><span className="text-[10px] align-sub">B</span>)
+            </span>
+          </div>
         </div>
-        <div className="mt-2 text-[10px] text-muted-foreground">
+        <div className="text-[10px] text-muted-foreground">
           Davidson extension of the Bradley-Terry model
         </div>
       </div>
