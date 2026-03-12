@@ -9,6 +9,7 @@ import {
   Crosshair,
   ScatterChart as ScatterChartIcon,
   Lightbulb,
+  BookOpen,
   Menu,
   X,
   PanelLeftClose,
@@ -22,6 +23,7 @@ const nav = [
   { href: "/head-to-head", label: "Head to Head", icon: Crosshair },
   { href: "/comparison", label: "Comparison", icon: ScatterChartIcon },
   { href: "/insights", label: "Insights", icon: Lightbulb },
+  { href: "/how-it-works", label: "How It Works", icon: BookOpen },
 ];
 
 interface SidebarProps {
