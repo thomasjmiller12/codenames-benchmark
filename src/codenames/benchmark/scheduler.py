@@ -118,6 +118,87 @@ class Scheduler:
         return schedule
 
     @staticmethod
+    def build_solo_schedule(
+        models: list[str] | None = None,
+        matchups: list[tuple[str, str]] | None = None,
+        games_per_matchup: int = 6,
+        base_seed: int = 42,
+    ) -> list[ScheduledMatch]:
+        """Build a combined solo schedule from round-robin models and/or explicit matchups.
+
+        Collects unique pairs from both sources (deduplicating by sorted
+        model pair), then generates mirrored game pairs for each.
+
+        Parameters
+        ----------
+        models:
+            Model IDs for round-robin pairing. All unique pairs are generated.
+        matchups:
+            Explicit ``(model_a, model_b)`` pairs to schedule.
+        games_per_matchup:
+            Total games between each pair (must be even for side swaps).
+        base_seed:
+            Starting seed for deterministic board generation.
+        """
+        if games_per_matchup % 2 != 0:
+            raise ValueError(
+                f"games_per_matchup must be even for fair side swaps, "
+                f"got {games_per_matchup}"
+            )
+
+        # Collect all unique pairs (deduplicated by sorted tuple)
+        seen: set[tuple[str, str]] = set()
+        all_pairs: list[tuple[str, str]] = []
+
+        if models and len(models) >= 2:
+            for model_a, model_b in combinations(models, 2):
+                key = (min(model_a, model_b), max(model_a, model_b))
+                if key not in seen:
+                    seen.add(key)
+                    all_pairs.append((model_a, model_b))
+
+        if matchups:
+            for model_a, model_b in matchups:
+                key = (min(model_a, model_b), max(model_a, model_b))
+                if key not in seen:
+                    seen.add(key)
+                    all_pairs.append((model_a, model_b))
+
+        schedule: list[ScheduledMatch] = []
+        seed_counter = base_seed
+        pair_counter = 0
+
+        for model_a, model_b in all_pairs:
+            num_pairs = games_per_matchup // 2
+            for pair_idx in range(num_pairs):
+                pair_counter += 1
+                schedule.append(
+                    ScheduledMatch(
+                        red_sm_model=model_a,
+                        red_op_model=model_a,
+                        blue_sm_model=model_b,
+                        blue_op_model=model_b,
+                        board_seed=seed_counter,
+                        game_number=pair_idx * 2 + 1,
+                        pair_id=pair_counter,
+                    )
+                )
+                schedule.append(
+                    ScheduledMatch(
+                        red_sm_model=model_b,
+                        red_op_model=model_b,
+                        blue_sm_model=model_a,
+                        blue_op_model=model_a,
+                        board_seed=seed_counter,
+                        game_number=pair_idx * 2 + 2,
+                        pair_id=pair_counter,
+                    )
+                )
+                seed_counter += 1
+
+        return schedule
+
+    @staticmethod
     def round_robin_collab(
         pairs: list[tuple[str, str]],
         games_per_matchup: int = 6,

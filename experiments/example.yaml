@@ -1,0 +1,26 @@
+# Example benchmark experiment config
+#
+# Usage: codenames benchmark --config experiments/example.yaml
+#
+# Three modes:
+#   1. Round-robin: list models under `models:` — all pairs are scheduled
+#   2. Specific matchups: list pairs under `matchups:` — only those pairs play
+#   3. Mixed: use both — round-robin pairs + explicit extras (duplicates removed)
+
+name: example-benchmark
+games_per_matchup: 6      # must be even (mirrored pairs)
+seed: 42
+max_concurrent: 4          # parallel games
+max_concurrent_per_model: 5
+move_timeout: 120          # seconds per move; 0 to disable
+
+# Round-robin pool — every pair plays each other
+models:
+  - openai/gpt-4o-mini
+  - anthropic/claude-3.5-haiku
+  - google/gemini-2.0-flash-001
+
+# Specific matchups — add targeted pairs (on top of round-robin)
+# matchups:
+#   - [openai/gpt-4o, anthropic/claude-3.5-haiku]
+#   - [openai/gpt-4o, google/gemini-2.0-flash-001]

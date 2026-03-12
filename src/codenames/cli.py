@@ -218,7 +218,7 @@ class _LivePrinter:
 def compute_ratings_from_db(
     repo: Repository,
     db: Database,
-    n_bootstrap: int = 1000,
+    n_bootstrap: int = 2000,
 ) -> None:
     """Compute Bradley-Terry ratings from all completed games and save them.
 
@@ -231,11 +231,11 @@ def compute_ratings_from_db(
     # Fetch all completed games grouped by pair_id
     cur = db.execute(
         """
-        SELECT game_id, red_sm_model, red_op_model, blue_sm_model, blue_op_model,
+        SELECT game_id, experiment_id, red_sm_model, red_op_model, blue_sm_model, blue_op_model,
                mode, winner, pair_id, status
         FROM games
         WHERE status = 'completed'
-        ORDER BY pair_id, created_at
+        ORDER BY experiment_id, pair_id, created_at
         """
     )
     rows = [dict(r) for r in cur.fetchall()]
@@ -248,17 +248,19 @@ def compute_ratings_from_db(
     model_rows = repo.list_models()
     model_ids = [m["model_id"] for m in model_rows]
 
-    # Group games by (pair_id, matchup) for pair-based scoring.
-    # pair_id is a round number — multiple matchups share the same pair_id,
-    # so we sub-group by the sorted model pair within each pair_id.
-    MatchupKey = tuple[int | None, tuple[str, str]]  # (pair_id, (model_a, model_b))
+    # Group games by (experiment_id, pair_id, matchup) for pair-based scoring.
+    # pair_id resets per experiment, so we need experiment_id to uniquely
+    # identify a pair. We also sub-group by sorted model pair since multiple
+    # matchups can share the same pair_id within an experiment round.
+    MatchupKey = tuple[str | None, int | None, tuple[str, str]]  # (exp_id, pair_id, (model_a, model_b))
     matchups: dict[MatchupKey, list[dict]] = {}
     for row in rows:
         if row["mode"] != "solo":
             continue
+        eid = row.get("experiment_id")
         pid = row.get("pair_id")
         models_key = tuple(sorted([row["red_sm_model"], row["blue_sm_model"]]))
-        key = (pid, models_key)
+        key = (eid, pid, models_key)
         matchups.setdefault(key, []).append(row)
 
     # Build game results for each mode
@@ -269,18 +271,11 @@ def compute_ratings_from_db(
         games_per_model.setdefault(model_id, {}).setdefault(rating_type, 0)
         games_per_model[model_id][rating_type] += 1
 
-    for (pid, models_key), matchup_games in matchups.items():
+    for (eid, pid, models_key), matchup_games in matchups.items():
         model_a, model_b = models_key
 
         if pid is None:
-            # Unpaired games — treat each as a standalone result
-            for g in matchup_games:
-                _count_game(model_a, "solo")
-                _count_game(model_b, "solo")
-                if g["winner"] == "red":
-                    solo_results.append((g["red_sm_model"], g["blue_sm_model"], 1.0))
-                elif g["winner"] == "blue":
-                    solo_results.append((g["red_sm_model"], g["blue_sm_model"], 0.0))
+            # Skip unpaired games — only complete pairs count for ratings
             continue
 
         # Paired games — determine pair outcome
@@ -311,18 +306,15 @@ def compute_ratings_from_db(
             elif a_wins == 1 and b_wins == 1:
                 solo_results.append((model_a, model_b, 0.5))
 
-        elif len(valid_games) == 1:
-            # Single valid game in pair — treat as standalone
-            g = valid_games[0]
-            _count_game(model_a, "solo")
-            _count_game(model_b, "solo")
-            if g["winner"] == "red":
-                solo_results.append((g["red_sm_model"], g["blue_sm_model"], 1.0))
-            elif g["winner"] == "blue":
-                solo_results.append((g["red_sm_model"], g["blue_sm_model"], 0.0))
+        # Skip orphans (pair_id set but partner missing) — don't count incomplete pairs
 
     # Compute BT ratings for solo mode
     if solo_results:
+        # Snapshot old ratings for comparison
+        old_ratings: dict[str, float] = {}
+        for m in model_rows:
+            old_ratings[m["model_id"]] = m.get("solo_rating", 1500.0) or 1500.0
+
         console.print(f"Computing Bradley-Terry ratings from {len(solo_results)} pair results...")
         bt_ratings = BradleyTerry.fit_with_ci(solo_results, model_ids, n_bootstrap=n_bootstrap)
         repo.save_bt_ratings(
@@ -332,6 +324,36 @@ def compute_ratings_from_db(
         )
         repo.save_bt_games_played(games_per_model)
         console.print(f"[green]Saved {len(bt_ratings)} solo ratings.[/green]")
+
+        # Show biggest movers
+        from rich.table import Table
+
+        deltas = []
+        for r in bt_ratings:
+            old = old_ratings.get(r.model_id, 1500.0)
+            delta = r.rating - old
+            if abs(delta) >= 0.01:
+                deltas.append((r.model_id, old, r.rating, delta))
+
+        if deltas:
+            deltas.sort(key=lambda x: abs(x[3]), reverse=True)
+            table = Table(title="Biggest Rating Changes")
+            table.add_column("Model", style="cyan")
+            table.add_column("Old", justify="right")
+            table.add_column("New", justify="right")
+            table.add_column("Delta", justify="right")
+            for model_id, old, new, delta in deltas:
+                sign = "+" if delta > 0 else ""
+                color = "green" if delta > 0 else "red"
+                table.add_row(
+                    model_id,
+                    f"{old:.0f}",
+                    f"{new:.0f}",
+                    f"[{color}]{sign}{delta:.1f}[/{color}]",
+                )
+            console.print(table)
+        else:
+            console.print("[dim]No rating changes.[/dim]")
     else:
         console.print("[yellow]No solo game results to compute ratings from.[/yellow]")
 
@@ -461,12 +483,12 @@ def play(
 
 @app.command()
 def benchmark(
-    models: str = typer.Option(..., "--models", help="Comma-separated list of model IDs"),
+    config_path: Optional[str] = typer.Option(None, "--config", help="Path to a YAML experiment config file"),
+    models: Optional[str] = typer.Option(None, "--models", help="Comma-separated list of model IDs"),
     mode: str = typer.Option("solo", "--mode", help="Game mode: solo or collab"),
     games_per_matchup: int = typer.Option(6, "--games-per-matchup", help="Games per model pair"),
     seed: int = typer.Option(42, "--seed", help="Base random seed"),
     name: Optional[str] = typer.Option(None, "--name", help="Experiment name"),
-    budget: Optional[float] = typer.Option(None, "--budget", help="Max budget in USD"),
     max_concurrent: int = typer.Option(4, "--max-concurrent", help="Max parallel games"),
     max_concurrent_per_model: int = typer.Option(5, "--max-concurrent-per-model", help="Max parallel LLM requests per model"),
     move_timeout: Optional[float] = typer.Option(120.0, "--move-timeout", help="Per-move timeout in seconds (game discarded on timeout). Use 0 to disable."),
@@ -474,46 +496,64 @@ def benchmark(
 ) -> None:
     """Run a full benchmark tournament between multiple models.
 
-    Games are run in parallel (up to --max-concurrent) and scored using
-    mirrored pairs: each pair of models plays the same board from both
-    sides. Ratings are computed via Bradley-Terry after the tournament.
+    Use --config to load from a YAML file, or --models for a quick
+    round-robin. Games are run in parallel (up to --max-concurrent) and
+    scored using mirrored pairs. Ratings are computed via Bradley-Terry
+    after the tournament.
     """
     from codenames.benchmark.tournament import TournamentConfig, TournamentRunner
 
     api_key = _get_api_key()
-    model_list = [m.strip() for m in models.split(",") if m.strip()]
 
-    if len(model_list) < 2:
-        console.print("[bold red]Error:[/bold red] At least 2 models required for a benchmark.")
-        raise typer.Exit(code=1)
+    if config_path:
+        # YAML config mode
+        from codenames.benchmark.config import load_experiment_config, config_to_tournament
 
-    experiment_name = name or f"benchmark-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        exp_config = load_experiment_config(config_path)
+        tournament_config = config_to_tournament(exp_config)
+        experiment_name = exp_config.name or name or f"benchmark-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        effective_max_concurrent_per_model = exp_config.max_concurrent_per_model
+        effective_mode = exp_config.mode
+    else:
+        # CLI flags mode
+        if not models:
+            console.print("[bold red]Error:[/bold red] Provide --config or --models.")
+            raise typer.Exit(code=1)
+
+        model_list = [m.strip() for m in models.split(",") if m.strip()]
+        if len(model_list) < 2:
+            console.print("[bold red]Error:[/bold red] At least 2 models required for a benchmark.")
+            raise typer.Exit(code=1)
+
+        experiment_name = name or f"benchmark-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        effective_timeout = move_timeout if move_timeout and move_timeout > 0 else None
+        tournament_config = TournamentConfig(
+            models=model_list,
+            mode=mode,
+            games_per_matchup=games_per_matchup,
+            seed=seed,
+            max_concurrent=max_concurrent,
+            move_timeout=effective_timeout,
+        )
+        effective_max_concurrent_per_model = max_concurrent_per_model
+        effective_mode = mode
 
     console.print(f"[bold]Benchmark:[/bold] {experiment_name}")
-    console.print(f"[bold]Models:[/bold] {', '.join(model_list)}")
-    console.print(f"[bold]Games per matchup:[/bold] {games_per_matchup}")
-    console.print(f"[bold]Max concurrent:[/bold] {max_concurrent}")
+    console.print(f"[bold]Models:[/bold] {', '.join(tournament_config.models)}")
+    if tournament_config.matchups:
+        console.print(f"[bold]Explicit matchups:[/bold] {len(tournament_config.matchups)}")
+    console.print(f"[bold]Games per matchup:[/bold] {tournament_config.games_per_matchup}")
+    console.print(f"[bold]Max concurrent:[/bold] {tournament_config.max_concurrent}")
 
     db, repo = _init_db(db_path)
     try:
         llm_client = LLMClient(
             api_key=api_key,
-            max_concurrent_per_model=max_concurrent_per_model,
+            max_concurrent_per_model=effective_max_concurrent_per_model,
         )
         word_pool = WordPool()
 
-        effective_timeout = move_timeout if move_timeout and move_timeout > 0 else None
-        config = TournamentConfig(
-            models=model_list,
-            mode=mode,
-            games_per_matchup=games_per_matchup,
-            seed=seed,
-            budget_usd=budget,
-            max_concurrent=max_concurrent,
-            move_timeout=effective_timeout,
-        )
-
-        runner = TournamentRunner(config, llm_client, db, word_pool)
+        runner = TournamentRunner(tournament_config, llm_client, db, word_pool)
 
         async def _run_tournament() -> str:
             try:
@@ -529,7 +569,7 @@ def benchmark(
         console.print("\n[bold]Computing ratings...[/bold]")
         compute_ratings_from_db(repo, db)
 
-        _display_leaderboard_table(repo, mode)
+        _display_leaderboard_table(repo, effective_mode)
 
     finally:
         db.close()

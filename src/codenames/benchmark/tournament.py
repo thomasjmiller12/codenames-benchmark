@@ -50,9 +50,10 @@ class TournamentConfig:
         Base seed for deterministic scheduling and board generation.
     collab_pairs:
         For collab mode: list of ``(spymaster_model, operative_model)`` pairs.
-    budget_usd:
-        Optional cost limit. The tournament stops if cumulative cost exceeds
-        this value.
+    matchups:
+        Explicit model pairs to schedule. Each tuple is ``(model_a, model_b)``.
+        When combined with ``models``, round-robin pairs and explicit matchups
+        are merged (duplicates removed).
     max_concurrent:
         Maximum number of games to run in parallel.
     """
@@ -62,7 +63,7 @@ class TournamentConfig:
     games_per_matchup: int = 6
     seed: int = 42
     collab_pairs: list[tuple[str, str]] | None = None
-    budget_usd: float | None = None
+    matchups: list[tuple[str, str]] | None = None
     max_concurrent: int = 4
     model_pricing: dict[str, dict[str, float]] | None = None
     move_timeout: float | None = 120.0  # per-move timeout in seconds; None to disable
@@ -143,7 +144,6 @@ class TournamentRunner:
         self._total_cost = 0.0
 
         # Concurrency state (initialised per run)
-        self._budget_exceeded = False
         self._pair_results: dict[int, list[tuple[ScheduledMatch, GameResult | None, str]]] = {}
         self._pair_lock = asyncio.Lock()
         self._error_count = 0
@@ -168,7 +168,7 @@ class TournamentRunner:
             "games_per_matchup": self._config.games_per_matchup,
             "seed": self._config.seed,
             "collab_pairs": self._config.collab_pairs,
-            "budget_usd": self._config.budget_usd,
+            "matchups": self._config.matchups,
             "max_concurrent": self._config.max_concurrent,
         }
 
@@ -195,10 +195,11 @@ class TournamentRunner:
 
         # 3. Generate the schedule
         if self._config.mode == "solo":
-            schedule = Scheduler.round_robin_solo(
-                self._config.models,
-                self._config.games_per_matchup,
-                self._config.seed,
+            schedule = Scheduler.build_solo_schedule(
+                models=self._config.models,
+                matchups=self._config.matchups,
+                games_per_matchup=self._config.games_per_matchup,
+                base_seed=self._config.seed,
             )
         elif self._config.mode == "collab":
             if self._config.collab_pairs is None:
@@ -236,7 +237,6 @@ class TournamentRunner:
         )
 
         # 4. Run games in parallel with tqdm progress
-        self._budget_exceeded = False
         self._pair_results = {}
         self._error_count = 0
         completed_count = 0
@@ -297,19 +297,10 @@ class TournamentRunner:
         async def run_game_task(match: ScheduledMatch) -> GameResult | None:
             nonlocal completed_count
 
-            if self._budget_exceeded:
-                return None
-
             async with sem:
-                if self._budget_exceeded:
-                    return None
-
                 result, game_id = await self._run_single_game(
                     match, experiment_id
                 )
-
-                if result is None:
-                    return None
 
                 completed_count += 1
 
@@ -386,11 +377,10 @@ class TournamentRunner:
 
     async def _run_single_game(
         self, match: ScheduledMatch, experiment_id: str
-    ) -> tuple[GameResult, str] | tuple[None, str]:
+    ) -> tuple[GameResult, str]:
         """Run one game and persist results.
 
-        Returns ``(GameResult, game_id)`` on success, or ``(None, game_id)``
-        if the budget was exceeded.
+        Returns ``(GameResult, game_id)``.
         """
         game_id = str(uuid.uuid4())
 
@@ -468,17 +458,6 @@ class TournamentRunner:
         game_cost = self._calculate_game_cost(result, match)
         self._total_cost += game_cost
 
-        # Check budget
-        if (
-            self._config.budget_usd is not None
-            and self._total_cost > self._config.budget_usd
-        ):
-            self._budget_exceeded = True
-            logger.warning(
-                "Budget limit reached ($%.4f). No new games will start.",
-                self._total_cost,
-            )
-
         # Compute token totals from move log
         total_input_tokens = sum(
             m.input_tokens for m in result.move_log if m.input_tokens
@@ -534,9 +513,6 @@ class TournamentRunner:
 
         # Populate turns table from move log
         self._save_turns_from_log(game_id, result.move_log)
-
-        if self._budget_exceeded:
-            return None, game_id
 
         return result, game_id
 
@@ -666,5 +642,10 @@ class TournamentRunner:
             for sm_model, op_model in self._config.collab_pairs:
                 model_ids.add(sm_model)
                 model_ids.add(op_model)
+
+        if self._config.matchups:
+            for model_a, model_b in self._config.matchups:
+                model_ids.add(model_a)
+                model_ids.add(model_b)
 
         return model_ids
