@@ -10,7 +10,7 @@ import { GameWalkthrough } from "@/components/explainer/game-walkthrough";
 import { LLMPipeline } from "@/components/explainer/llm-pipeline";
 import { MirroredPairs } from "@/components/explainer/mirrored-pairs";
 import { RatingExplorer } from "@/components/explainer/rating-explorer";
-import { BootstrapViz } from "@/components/explainer/bootstrap-viz";
+import { ConfidenceExplorer } from "@/components/explainer/confidence-explorer";
 
 const SECTIONS = [
   { id: "hero", label: "Intro" },
@@ -22,7 +22,18 @@ const SECTIONS = [
   { id: "footer", label: "Explore" },
 ];
 
-export function HowItWorksClient() {
+interface TopModel {
+  display_name: string;
+  solo_rating: number;
+  solo_ci_lower: number;
+  solo_ci_upper: number;
+}
+
+interface HowItWorksClientProps {
+  topModels: TopModel[];
+}
+
+export function HowItWorksClient({ topModels }: HowItWorksClientProps) {
   const [activeSection, setActiveSection] = useState("hero");
   const observerRef = useRef<IntersectionObserver | null>(null);
   const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -153,11 +164,17 @@ export function HowItWorksClient() {
             How Confident Are We?
           </h2>
           <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-            We resample game results <strong className="text-foreground">1,000 times</strong> with replacement
-            (bootstrap), refit the rating model each time, and take the middle 95% as the confidence
-            interval. Wider error bars mean less certainty — usually from fewer games or more volatile results.
+            A single rating number isn&apos;t the whole story. We resample game results{" "}
+            <strong className="text-foreground">1,000 times</strong> with replacement (bootstrap),
+            refit the rating model each time, and take the middle 95% as the{" "}
+            <strong className="text-foreground">confidence interval</strong>.
+            Wider bars mean less certainty — usually from fewer games or more volatile results.
           </p>
-          <BootstrapViz />
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Here are the current top models. Pick a matchup to see what the ratings
+            predict — and whether the gap is meaningful:
+          </p>
+          <ConfidenceExplorer models={topModels} />
         </div>
       </SectionWrapper>
 
