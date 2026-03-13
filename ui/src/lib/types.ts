@@ -169,6 +169,16 @@ export interface OperativeObedience extends ModelInsight {
   usage_ratio: number;
 }
 
+export interface TokensPerTurn extends ModelInsight {
+  avg_tokens_per_turn: number;
+  total_turns: number;
+}
+
+export interface TokensPerGame extends ModelInsight {
+  avg_tokens_per_game: number;
+  total_games: number;
+}
+
 export interface InsightsData {
   firstClueAmbition: FirstClueAmbition[];
   turnsToWin: TurnsToWin[];
@@ -178,4 +188,6 @@ export interface InsightsData {
   guessAccuracy: GuessAccuracy[];
   comebackRate: ComebackRate[];
   operativeObedience: OperativeObedience[];
+  tokensPerTurn: TokensPerTurn[];
+  tokensPerGame: TokensPerGame[];
 }

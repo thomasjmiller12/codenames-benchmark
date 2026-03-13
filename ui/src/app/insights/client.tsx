@@ -20,6 +20,8 @@ import {
   Crosshair,
   TrendingUp,
   Brain,
+  Cpu,
+  Activity,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { InsightsData } from "@/lib/types";
@@ -140,6 +142,22 @@ export function InsightsClient({ data }: Props) {
           ratio_pct: d.usage_ratio * 100,
         })),
     [data.operativeObedience]
+  );
+
+  const tokensPerTurn = useMemo(
+    () =>
+      [...data.tokensPerTurn]
+        .sort((a, b) => b.solo_rating - a.solo_rating)
+        .map((d) => ({ ...d, short_name: shortName(d.display_name), avg_tokens: Math.round(d.avg_tokens_per_turn) })),
+    [data.tokensPerTurn]
+  );
+
+  const tokensPerGame = useMemo(
+    () =>
+      [...data.tokensPerGame]
+        .sort((a, b) => b.solo_rating - a.solo_rating)
+        .map((d) => ({ ...d, short_name: shortName(d.display_name), avg_tokens: Math.round(d.avg_tokens_per_game) })),
+    [data.tokensPerGame]
   );
 
   // Clue size: transform to grouped bar data
@@ -662,6 +680,122 @@ export function InsightsClient({ data }: Props) {
                   <Legend
                     wrapperStyle={{ fontSize: 11 }}
                   />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 9. Tokens per Turn */}
+        <Card className="bg-card/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Cpu className="h-4 w-4 text-teal-400" />
+              Tokens per Turn
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Average total tokens (input + output) consumed per turn. Measures per-move verbosity.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {tokensPerTurn.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Not enough data yet
+              </p>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={tokensPerTurn}
+                  margin={{ top: 8, right: 8, bottom: 60, left: 0 }}
+                >
+                  <XAxis
+                    dataKey="short_name"
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    angle={-45}
+                    textAnchor="end"
+                    interval={0}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => (
+                      <ChartTooltip
+                        active={active}
+                        payload={payload}
+                        labelKey="display_name"
+                        valueKey="avg_tokens"
+                        valueFormat={(v) => `${v.toLocaleString()} tokens/turn`}
+                      />
+                    )}
+                  />
+                  <Bar dataKey="avg_tokens" radius={[4, 4, 0, 0]}>
+                    {tokensPerTurn.map((_, i) => (
+                      <Cell
+                        key={i}
+                        fill={CHART_COLORS[i % CHART_COLORS.length]}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 10. Tokens per Game */}
+        <Card className="bg-card/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Activity className="h-4 w-4 text-pink-400" />
+              Tokens per Game
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Average total tokens consumed per game. Higher = more compute-intensive gameplay.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {tokensPerGame.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Not enough data yet
+              </p>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={tokensPerGame}
+                  margin={{ top: 8, right: 8, bottom: 60, left: 0 }}
+                >
+                  <XAxis
+                    dataKey="short_name"
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    angle={-45}
+                    textAnchor="end"
+                    interval={0}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => (
+                      <ChartTooltip
+                        active={active}
+                        payload={payload}
+                        labelKey="display_name"
+                        valueKey="avg_tokens"
+                        valueFormat={(v) => `${v.toLocaleString()} tokens/game`}
+                      />
+                    )}
+                  />
+                  <Bar dataKey="avg_tokens" radius={[4, 4, 0, 0]}>
+                    {tokensPerGame.map((_, i) => (
+                      <Cell
+                        key={i}
+                        fill={CHART_COLORS[i % CHART_COLORS.length]}
+                      />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             )}

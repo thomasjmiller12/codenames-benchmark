@@ -17,6 +17,8 @@ import type {
   GuessAccuracy,
   ComebackRate,
   OperativeObedience,
+  TokensPerTurn,
+  TokensPerGame,
 } from "./types";
 import { HIDDEN_MODELS } from "./constants";
 
@@ -462,6 +464,8 @@ const EMPTY_INSIGHTS: InsightsData = {
   guessAccuracy: [],
   comebackRate: [],
   operativeObedience: [],
+  tokensPerTurn: [],
+  tokensPerGame: [],
 };
 
 export async function getInsightsData(): Promise<InsightsData> {
@@ -469,7 +473,7 @@ export async function getInsightsData(): Promise<InsightsData> {
 
   try {
     // All insights use all games — behavioral analysis benefits from max data
-    const [modelRowsRes, firstClueRes, turnsToWinRes, redBlueRes, assassinRes, clueSizeRes, guessRes, comebackRes, obedienceRes] = await Promise.all([
+    const [modelRowsRes, firstClueRes, turnsToWinRes, redBlueRes, assassinRes, clueSizeRes, guessRes, comebackRes, obedienceRes, tokensPerTurnRes, tokensPerGameRes] = await Promise.all([
       db.execute("SELECT model_id, display_name, solo_rating FROM models"),
       db.execute(
         `SELECT sm_model as model_id, AVG(clue_count) as avg_cc, COUNT(*) as games
@@ -559,6 +563,37 @@ export async function getInsightsData(): Promise<InsightsData> {
         `SELECT op_model as model_id, guesses_json, clue_count
          FROM turns
          WHERE op_model IS NOT NULL AND guesses_json IS NOT NULL AND clue_count IS NOT NULL`
+      ),
+      db.execute(
+        `SELECT model_id,
+                AVG(total_tokens) as avg_tokens,
+                SUM(turn_count) as total_turns
+         FROM (
+           SELECT sm_model as model_id,
+                  sm_input_tokens + sm_output_tokens + op_input_tokens + op_output_tokens as total_tokens,
+                  1 as turn_count
+           FROM turns
+           WHERE sm_model IS NOT NULL
+             AND (sm_input_tokens + sm_output_tokens + op_input_tokens + op_output_tokens) > 0
+         )
+         GROUP BY model_id
+         HAVING total_turns >= 5`
+      ),
+      db.execute(
+        `SELECT model_id,
+                AVG(tokens) as avg_tokens,
+                COUNT(*) as total_games
+         FROM (
+           SELECT red_sm_model as model_id,
+                  total_input_tokens + total_output_tokens as tokens
+           FROM games WHERE status = 'completed' AND (total_input_tokens + total_output_tokens) > 0
+           UNION ALL
+           SELECT blue_sm_model as model_id,
+                  total_input_tokens + total_output_tokens as tokens
+           FROM games WHERE status = 'completed' AND (total_input_tokens + total_output_tokens) > 0
+         )
+         GROUP BY model_id
+         HAVING total_games >= 3`
       ),
     ]);
 
@@ -700,6 +735,20 @@ export async function getInsightsData(): Promise<InsightsData> {
       });
     }
 
+    // 9. Tokens per Turn
+    const tokensPerTurn: TokensPerTurn[] = tokensPerTurnRes.rows.map((r) => ({
+      ...modelInfo(col(r, "model_id") as string),
+      avg_tokens_per_turn: col(r, "avg_tokens") as number,
+      total_turns: col(r, "total_turns") as number,
+    }));
+
+    // 10. Tokens per Game
+    const tokensPerGame: TokensPerGame[] = tokensPerGameRes.rows.map((r) => ({
+      ...modelInfo(col(r, "model_id") as string),
+      avg_tokens_per_game: col(r, "avg_tokens") as number,
+      total_games: col(r, "total_games") as number,
+    }));
+
     const isVisible = (m: { model_id: string }) => !HIDDEN_MODELS.includes(m.model_id);
 
     return {
@@ -711,6 +760,8 @@ export async function getInsightsData(): Promise<InsightsData> {
       guessAccuracy: guessAccuracy.filter(isVisible),
       comebackRate: comebackRate.filter(isVisible),
       operativeObedience: operativeObedience.filter(isVisible),
+      tokensPerTurn: tokensPerTurn.filter(isVisible),
+      tokensPerGame: tokensPerGame.filter(isVisible),
     };
   } catch {
     return EMPTY_INSIGHTS;
