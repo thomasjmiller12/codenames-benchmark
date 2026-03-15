@@ -1,6 +1,7 @@
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { RecentGamesTable } from "@/components/dashboard/recent-games-table";
 import { WinConditionPie, RatingDistribution } from "@/components/dashboard/charts";
+import { LeaderboardSnapshot, RedBlueWinRate } from "@/components/dashboard/leaderboard-snapshot";
 import { getModels, getGames, getOverallStats } from "@/lib/data";
 
 export const revalidate = 300; // re-fetch at most every 5 minutes
@@ -22,6 +23,14 @@ export default async function DashboardPage() {
       </div>
 
       <StatsCards overallStats={overallStats} />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <LeaderboardSnapshot models={models} />
+        <RedBlueWinRate
+          redWins={overallStats.redWins}
+          blueWins={overallStats.blueWins}
+        />
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <WinConditionPie
