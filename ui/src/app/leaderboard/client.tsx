@@ -15,7 +15,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { PROVIDER_COLORS, ELO_BASELINE } from "@/lib/constants";
 import { ENABLE_ROLE_RATINGS } from "@/lib/feature-flags";
-import { formatRating, formatWinRate, formatCost } from "@/lib/format";
+import { formatRating, formatWinRate, formatCost, formatTokens } from "@/lib/format";
 import type { RatingType, Model } from "@/lib/types";
 
 function getRating(model: Model, type: RatingType) {
@@ -111,7 +111,7 @@ export function LeaderboardClient({ models }: { models: Model[] }) {
                   <TableHead className="text-xs hidden sm:table-cell">Win Rate</TableHead>
                   <TableHead className="text-xs text-right">Games</TableHead>
                   <TableHead className="text-xs text-center hidden md:table-cell">Pairs (W/D/L)</TableHead>
-                  <TableHead className="text-xs text-right hidden lg:table-cell">Assassin W</TableHead>
+                  <TableHead className="text-xs text-right hidden lg:table-cell">Tok/Turn</TableHead>
                   <TableHead className="text-xs text-right hidden lg:table-cell">Assassin L</TableHead>
                   <TableHead className="text-xs text-right hidden md:table-cell">$/Game</TableHead>
                   <TableHead className="text-xs text-right pr-4 sm:pr-6 hidden lg:table-cell">Avg Latency</TableHead>
@@ -197,9 +197,9 @@ export function LeaderboardClient({ models }: { models: Model[] }) {
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-sm text-emerald-400 hidden lg:table-cell">
-                        {gamesCount > 0
-                          ? `${((model.assassin_wins / gamesCount) * 100).toFixed(0)}%`
+                      <TableCell className="text-right font-mono text-sm text-muted-foreground hidden lg:table-cell">
+                        {model.avg_tokens_per_turn > 0
+                          ? formatTokens(model.avg_tokens_per_turn)
                           : "—"}
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm text-red-400 hidden lg:table-cell">

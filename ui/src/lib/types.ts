@@ -29,6 +29,7 @@ export interface Model {
   total_cost_usd: number;
   avg_cost_per_game: number;
   avg_tokens_per_game: number;
+  avg_tokens_per_turn: number;
   avg_latency_ms: number;
 }
 

@@ -53,7 +53,7 @@ function deriveDisplayName(row: { display_name: string; model_id: string }): str
 export async function getModels(): Promise<Model[]> {
   const db = getDb();
 
-  const [modelsRes, gameStatsRes, latencyRes, assassinRes, pairStatsRes] = await Promise.all([
+  const [modelsRes, gameStatsRes, latencyRes, assassinRes, pairStatsRes, tokensPerTurnRes] = await Promise.all([
     db.execute("SELECT * FROM models ORDER BY solo_rating DESC"),
     // All games: wins, games, red/blue, cost, tokens
     db.execute(
@@ -148,6 +148,17 @@ export async function getModels(): Promise<Model[]> {
        )
        GROUP BY model_id`
     ),
+    db.execute(
+      `SELECT model_id, AVG(total_tokens) as avg_tokens_per_turn
+       FROM (
+         SELECT sm_model as model_id,
+                sm_input_tokens + sm_output_tokens + op_input_tokens + op_output_tokens as total_tokens
+         FROM turns
+         WHERE sm_model IS NOT NULL
+           AND (sm_input_tokens + sm_output_tokens + op_input_tokens + op_output_tokens) > 0
+       )
+       GROUP BY model_id`
+    ),
   ]);
 
   const rows = modelsRes.rows;
@@ -155,6 +166,7 @@ export async function getModels(): Promise<Model[]> {
   const latencyMap = new Map(latencyRes.rows.map((r) => [col(r, "model_id") as string, r]));
   const assassinMap = new Map(assassinRes.rows.map((r) => [col(r, "model_id") as string, r]));
   const pairMap = new Map(pairStatsRes.rows.map((r) => [col(r, "model_id") as string, r]));
+  const tptMap = new Map(tokensPerTurnRes.rows.map((r) => [col(r, "model_id") as string, r]));
 
   const visibleRows = rows.filter((row) => !HIDDEN_MODELS.includes(col(row, "model_id") as string));
 
@@ -163,6 +175,7 @@ export async function getModels(): Promise<Model[]> {
     const ls = latencyMap.get(col(row, "model_id") as string);
     const as_ = assassinMap.get(col(row, "model_id") as string);
     const pr = pairMap.get(col(row, "model_id") as string);
+    const tpt = tptMap.get(col(row, "model_id") as string);
     const soloGames = (gs ? col(gs, "solo_games") as number : null) ?? (col(row, "solo_games_played") as number) ?? 0;
     const spymasterGames = (gs ? col(gs, "spymaster_games") as number : null) ?? (col(row, "spymaster_games") as number) ?? 0;
     const operativeGames = (gs ? col(gs, "operative_games") as number : null) ?? (col(row, "operative_games") as number) ?? 0;
@@ -200,6 +213,7 @@ export async function getModels(): Promise<Model[]> {
       total_cost_usd: totalCost,
       avg_cost_per_game: totalGames > 0 ? totalCost / totalGames : 0,
       avg_tokens_per_game: (gs ? col(gs, "avg_tokens") as number : null) ?? 0,
+      avg_tokens_per_turn: (tpt ? col(tpt, "avg_tokens_per_turn") as number : null) ?? 0,
       avg_latency_ms: (ls ? col(ls, "avg_latency_ms") as number : null) ?? 0,
     };
   });
