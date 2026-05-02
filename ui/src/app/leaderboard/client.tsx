@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { PROVIDER_COLORS, ELO_BASELINE } from "@/lib/constants";
+import { SectionHeader } from "@/components/ui/section-header";
+import { PROVIDER_COLORS } from "@/lib/constants";
 import { ENABLE_ROLE_RATINGS } from "@/lib/feature-flags";
 import { formatRating, formatWinRate, formatCost, formatTokens } from "@/lib/format";
 import type { RatingType, Model } from "@/lib/types";
@@ -54,7 +55,15 @@ function formatCI(rating: number, ci: { lower: number; upper: number }): string 
   return `\u00B1${margin}`;
 }
 
-const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
+function topRowStyle(idx: number): React.CSSProperties | undefined {
+  if (idx >= 3) return undefined;
+  // Tapered emerald gradient + subtle scanline texture, intensity peaks at #1.
+  const intensity = idx === 0 ? 0.12 : idx === 1 ? 0.08 : 0.05;
+  const fade = intensity * 0.35;
+  return {
+    backgroundImage: `linear-gradient(to right, rgba(16,185,129,${intensity}) 0%, rgba(16,185,129,${fade}) 35%, transparent 75%), repeating-linear-gradient(0deg, transparent 0px, transparent 3px, rgba(255,255,255,0.045) 3px, rgba(255,255,255,0.045) 4px)`,
+  };
+}
 
 export function LeaderboardClient({ models }: { models: Model[] }) {
   const [ratingType, setRatingType] = useState<RatingType>("solo");
@@ -66,38 +75,36 @@ export function LeaderboardClient({ models }: { models: Model[] }) {
   if (models.length === 0) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Leaderboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            No models registered yet
-          </p>
-        </div>
+        <SectionHeader
+          eyebrow="ROSTER"
+          title="Leaderboard"
+          description="No models registered yet"
+        />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Leaderboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Model rankings by Bradley-Terry rating
-          </p>
-        </div>
-        {ENABLE_ROLE_RATINGS && (
-          <Tabs
-            value={ratingType}
-            onValueChange={(v) => v && setRatingType(v as RatingType)}
-          >
-            <TabsList>
-              <TabsTrigger value="solo">Solo</TabsTrigger>
-              <TabsTrigger value="spymaster">Spymaster</TabsTrigger>
-              <TabsTrigger value="operative">Operative</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        )}
-      </div>
+      <SectionHeader
+        eyebrow="ROSTER · BRADLEY-TERRY RATINGS"
+        title="Leaderboard"
+        description="Model rankings by Bradley-Terry rating, with bootstrap confidence intervals."
+        actions={
+          ENABLE_ROLE_RATINGS ? (
+            <Tabs
+              value={ratingType}
+              onValueChange={(v) => v && setRatingType(v as RatingType)}
+            >
+              <TabsList>
+                <TabsTrigger value="solo">Solo</TabsTrigger>
+                <TabsTrigger value="spymaster">Spymaster</TabsTrigger>
+                <TabsTrigger value="operative">Operative</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          ) : undefined
+        }
+      />
 
       <Card className="bg-card/50">
         <CardContent className="p-0">
@@ -126,14 +133,17 @@ export function LeaderboardClient({ models }: { models: Model[] }) {
                   const winRate = gamesCount > 0 ? (wins / gamesCount) * 100 : 0;
                   const ciStr = formatCI(rating, ci);
 
+                  const isTop = idx < 3 && models.length > 3;
+
                   return (
                     <TableRow
                       key={model.model_id}
                       className="border-border/30 transition-colors hover:bg-accent/30"
+                      style={topRowStyle(idx)}
                     >
                       <TableCell className="pl-4 sm:pl-6 font-mono text-sm font-bold">
-                        {idx < 3 && models.length > 3 ? (
-                          <span className="text-lg">{medals[idx]}</span>
+                        {isTop ? (
+                          <span className="text-emerald-300">{idx + 1}</span>
                         ) : (
                           <span className="text-muted-foreground">
                             {idx + 1}

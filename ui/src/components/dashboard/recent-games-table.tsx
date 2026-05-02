@@ -26,7 +26,7 @@ export function RecentGamesTable({
     return (
       <Card className="bg-card/50">
         <CardHeader>
-          <CardTitle className="text-base font-semibold">Top Recent Games</CardTitle>
+          <CardTitle className="font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">Top Recent Games</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground py-8 text-center">
@@ -54,7 +54,7 @@ export function RecentGamesTable({
   return (
     <Card className="bg-card/50">
       <CardHeader>
-        <CardTitle className="text-base font-semibold">Top Recent Games</CardTitle>
+        <CardTitle className="font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">Top Recent Games</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">

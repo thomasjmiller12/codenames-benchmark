@@ -2,6 +2,7 @@ import { StatsCards } from "@/components/dashboard/stats-cards";
 import { RecentGamesTable } from "@/components/dashboard/recent-games-table";
 import { WinConditionPie, RatingDistribution } from "@/components/dashboard/charts";
 import { LeaderboardSnapshot, RedBlueWinRate } from "@/components/dashboard/leaderboard-snapshot";
+import { SectionHeader } from "@/components/ui/section-header";
 import { getModels, getGames, getOverallStats } from "@/lib/data";
 
 export const revalidate = 300; // re-fetch at most every 5 minutes
@@ -14,13 +15,12 @@ export default async function DashboardPage() {
   ]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Overview of the Codenames LLM benchmark results
-        </p>
-      </div>
+    <div className="space-y-8">
+      <SectionHeader
+        eyebrow="SITUATION REPORT"
+        title="Dashboard"
+        description="Field briefing on the Codenames LLM benchmark — agents in the program, games logged, and the cost of running them."
+      />
 
       <StatsCards overallStats={overallStats} />
 

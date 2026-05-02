@@ -28,7 +28,7 @@ export function WinConditionPie({ data }: { data: WinConditionData }) {
     return (
       <Card className="bg-card/50">
         <CardHeader>
-          <CardTitle className="text-base font-semibold">
+          <CardTitle className="font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
             Win Conditions
           </CardTitle>
         </CardHeader>
@@ -50,7 +50,7 @@ export function WinConditionPie({ data }: { data: WinConditionData }) {
   return (
     <Card className="bg-card/50">
       <CardHeader>
-        <CardTitle className="text-base font-semibold">
+        <CardTitle className="font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
           Win Conditions
         </CardTitle>
       </CardHeader>
@@ -111,7 +111,7 @@ export function RatingDistribution({ models }: { models: Model[] }) {
     return (
       <Card className="bg-card/50">
         <CardHeader>
-          <CardTitle className="text-base font-semibold">
+          <CardTitle className="font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
             Elo Distribution
           </CardTitle>
         </CardHeader>
@@ -145,7 +145,7 @@ export function RatingDistribution({ models }: { models: Model[] }) {
   return (
     <Card className="bg-card/50">
       <CardHeader>
-        <CardTitle className="text-base font-semibold">
+        <CardTitle className="font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
           Elo Distribution
         </CardTitle>
       </CardHeader>

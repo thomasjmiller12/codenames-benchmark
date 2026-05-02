@@ -96,6 +96,7 @@ function SingleReplay({
   useEffect(() => {
     if (!isPlaying) return;
     if (currentStep >= totalSteps - 1) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- stop autoplay when reaching last step
       setIsPlaying(false);
       return;
     }

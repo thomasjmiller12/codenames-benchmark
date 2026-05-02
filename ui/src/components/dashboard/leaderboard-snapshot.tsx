@@ -8,7 +8,14 @@ import { formatRating } from "@/lib/format";
 import type { Model } from "@/lib/types";
 import { ArrowRight } from "lucide-react";
 
-const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
+function topRowStyle(idx: number): React.CSSProperties | undefined {
+  if (idx >= 3) return undefined;
+  const intensity = idx === 0 ? 0.10 : idx === 1 ? 0.07 : 0.04;
+  const fade = intensity * 0.35;
+  return {
+    backgroundImage: `linear-gradient(to right, rgba(16,185,129,${intensity}) 0%, rgba(16,185,129,${fade}) 40%, transparent 80%), repeating-linear-gradient(0deg, transparent 0px, transparent 3px, rgba(255,255,255,0.04) 3px, rgba(255,255,255,0.04) 4px)`,
+  };
+}
 
 export function LeaderboardSnapshot({ models }: { models: Model[] }) {
   const top = [...models]
@@ -19,7 +26,7 @@ export function LeaderboardSnapshot({ models }: { models: Model[] }) {
     return (
       <Card className="bg-card/50">
         <CardHeader>
-          <CardTitle className="text-base font-semibold">
+          <CardTitle className="font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
             Top Models
           </CardTitle>
         </CardHeader>
@@ -36,7 +43,7 @@ export function LeaderboardSnapshot({ models }: { models: Model[] }) {
     <Link href="/leaderboard" className="block group">
       <Card className="bg-card/50 transition-colors group-hover:bg-card/70">
         <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <CardTitle className="text-base font-semibold">Top Models</CardTitle>
+          <CardTitle className="font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">Top Models</CardTitle>
           <span className="text-xs text-muted-foreground flex items-center gap-1 group-hover:text-foreground transition-colors">
             Full leaderboard <ArrowRight className="h-3 w-3" />
           </span>
@@ -51,15 +58,14 @@ export function LeaderboardSnapshot({ models }: { models: Model[] }) {
             return (
               <div
                 key={model.model_id}
-                className="flex items-center gap-3 py-1.5"
+                className="-mx-2 flex items-center gap-3 rounded-md px-2 py-1.5"
+                style={topRowStyle(idx)}
               >
-                <span className="w-6 text-center text-sm shrink-0">
+                <span className="w-6 text-center font-mono text-xs font-bold shrink-0">
                   {idx < 3 ? (
-                    <span className="text-base">{medals[idx]}</span>
+                    <span className="text-emerald-300">{idx + 1}</span>
                   ) : (
-                    <span className="text-muted-foreground font-mono text-xs">
-                      {idx + 1}
-                    </span>
+                    <span className="text-muted-foreground">{idx + 1}</span>
                   )}
                 </span>
                 <div className="flex-1 min-w-0">
@@ -107,7 +113,7 @@ export function RedBlueWinRate({
     return (
       <Card className="bg-card/50">
         <CardHeader>
-          <CardTitle className="text-base font-semibold">
+          <CardTitle className="font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
             Red vs Blue
           </CardTitle>
         </CardHeader>
@@ -126,7 +132,7 @@ export function RedBlueWinRate({
   return (
     <Card className="bg-card/50">
       <CardHeader>
-        <CardTitle className="text-base font-semibold">Red vs Blue</CardTitle>
+        <CardTitle className="font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">Red vs Blue</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="flex flex-col items-center gap-4">

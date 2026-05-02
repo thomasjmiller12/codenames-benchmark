@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -38,6 +38,7 @@ export function Sidebar({ totalGames = 0, totalModels = 0 }: SidebarProps) {
 
   // Close mobile sidebar on route change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing UI state to external navigation is the legit use case
     setMobileOpen(false);
   }, [pathname]);
 

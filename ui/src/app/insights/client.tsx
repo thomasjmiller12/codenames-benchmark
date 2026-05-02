@@ -12,7 +12,6 @@ import {
   Legend,
 } from "recharts";
 import {
-  Lightbulb,
   Target,
   Zap,
   Shield,
@@ -24,6 +23,7 @@ import {
   Activity,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionHeader } from "@/components/ui/section-header";
 import type { InsightsData } from "@/lib/types";
 import { CHART_COLORS, TEAM_COLORS } from "@/lib/constants";
 
@@ -38,7 +38,6 @@ function shortName(name: string, max = 14): string {
 }
 
 // Custom tooltip wrapper
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function ChartTooltip({
   active,
   payload,
@@ -47,13 +46,14 @@ function ChartTooltip({
   valueFormat,
 }: {
   active?: boolean;
-  payload?: readonly any[];
+  // recharts' tooltip payload type varies by chart; loosely type with unknown payload
+  payload?: readonly { payload?: Record<string, unknown> }[];
   labelKey: string;
   valueKey: string;
   valueFormat?: (v: number) => string;
 }) {
   if (!active || !payload?.length) return null;
-  const d = payload[0].payload as Record<string, unknown>;
+  const d = (payload[0].payload ?? {}) as Record<string, unknown>;
   const val = d[valueKey] as number;
   return (
     <div className="rounded-lg border border-border bg-popover px-3 py-2 text-sm shadow-md">
@@ -189,24 +189,19 @@ export function InsightsClient({ data }: Props) {
   );
 
   return (
-    <div className="space-y-8 p-8">
-      {/* Header */}
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
-          <Lightbulb className="h-6 w-6 text-yellow-400" />
-          Insights
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Behavioral patterns and strategic differences between models
-        </p>
-      </div>
+    <div className="space-y-8">
+      <SectionHeader
+        eyebrow="DEBRIEF · BEHAVIORAL ANALYSIS"
+        title="Insights"
+        description="Behavioral patterns and strategic differences between models."
+      />
 
       {/* Grid of insight cards */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* 1. First Clue Ambition */}
         <Card className="bg-card/50">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex items-center gap-2 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
               <Zap className="h-4 w-4 text-yellow-400" />
               First Clue Ambition
             </CardTitle>
@@ -264,7 +259,7 @@ export function InsightsClient({ data }: Props) {
         {/* 2. Turns to Win */}
         <Card className="bg-card/50">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex items-center gap-2 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
               <Target className="h-4 w-4 text-green-400" />
               Turns to Win
             </CardTitle>
@@ -321,7 +316,7 @@ export function InsightsClient({ data }: Props) {
         {/* 3. Red vs Blue Win Rate */}
         <Card className="bg-card/50">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex items-center gap-2 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
               <BarChart3 className="h-4 w-4 text-purple-400" />
               Red vs Blue Win Rate
             </CardTitle>
@@ -383,7 +378,7 @@ export function InsightsClient({ data }: Props) {
         {/* 4. Assassin Discipline */}
         <Card className="bg-card/50">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex items-center gap-2 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
               <Shield className="h-4 w-4 text-red-400" />
               Assassin Discipline
             </CardTitle>
@@ -442,7 +437,7 @@ export function InsightsClient({ data }: Props) {
         {/* 5. Guess Accuracy */}
         <Card className="bg-card/50">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex items-center gap-2 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
               <Crosshair className="h-4 w-4 text-cyan-400" />
               Guess Accuracy
             </CardTitle>
@@ -501,7 +496,7 @@ export function InsightsClient({ data }: Props) {
         {/* 6. Comeback Rate */}
         <Card className="bg-card/50">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex items-center gap-2 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
               <TrendingUp className="h-4 w-4 text-emerald-400" />
               Comeback Rate
             </CardTitle>
@@ -560,7 +555,7 @@ export function InsightsClient({ data }: Props) {
         {/* 7. Operative Obedience */}
         <Card className="bg-card/50">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex items-center gap-2 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
               <Brain className="h-4 w-4 text-orange-400" />
               Operative Obedience
             </CardTitle>
@@ -619,7 +614,7 @@ export function InsightsClient({ data }: Props) {
         {/* 8. Clue Size Strategy */}
         <Card className="bg-card/50">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex items-center gap-2 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
               <BarChart3 className="h-4 w-4 text-indigo-400" />
               Clue Size Strategy
             </CardTitle>
@@ -689,7 +684,7 @@ export function InsightsClient({ data }: Props) {
         {/* 9. Tokens per Turn */}
         <Card className="bg-card/50">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex items-center gap-2 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
               <Cpu className="h-4 w-4 text-teal-400" />
               Tokens per Turn
             </CardTitle>
@@ -747,7 +742,7 @@ export function InsightsClient({ data }: Props) {
         {/* 10. Tokens per Game */}
         <Card className="bg-card/50">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex items-center gap-2 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-foreground/90">
               <Activity className="h-4 w-4 text-pink-400" />
               Tokens per Game
             </CardTitle>
