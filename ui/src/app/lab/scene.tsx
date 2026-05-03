@@ -118,6 +118,81 @@ function frontierScore(p: LabPoint, mix: [number, number, number]): number {
   );
 }
 
+// ─── NDC axis-edge picker (used in Task 4) ──────────────────────────────────
+// Picks which of the 4 candidate cube edges parallel to a given axis should
+// host that axis's label/ticks, based on screen-space NDC projection. Robust
+// under arbitrary orbits — replaces the older sign(camera.x/z) heuristic.
+
+type V3 = [number, number, number];
+interface Edge { start: V3; end: V3; midpoint: V3 }
+
+const _ndc = new THREE.Vector3();
+
+function midpoint(a: V3, b: V3): V3 {
+  return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+}
+
+// 4 candidate edges parallel to each axis. Coordinates are at the cube extremes
+// (±SCALE on the perpendicular axes).
+function candidateEdges(axis: "x" | "y" | "z"): Edge[] {
+  const s = SCALE;
+  const edges: Edge[] = [];
+  const make = (a: V3, b: V3): Edge => ({ start: a, end: b, midpoint: midpoint(a, b) });
+
+  if (axis === "x") {
+    edges.push(
+      make([-s, -s, -s], [s, -s, -s]),
+      make([-s, -s,  s], [s, -s,  s]),
+      make([-s,  s, -s], [s,  s, -s]),
+      make([-s,  s,  s], [s,  s,  s]),
+    );
+  } else if (axis === "z") {
+    edges.push(
+      make([-s, -s, -s], [-s, -s,  s]),
+      make([ s, -s, -s], [ s, -s,  s]),
+      make([-s,  s, -s], [-s,  s,  s]),
+      make([ s,  s, -s], [ s,  s,  s]),
+    );
+  } else {
+    edges.push(
+      make([-s, -s, -s], [-s,  s, -s]),
+      make([ s, -s, -s], [ s,  s, -s]),
+      make([-s, -s,  s], [-s,  s,  s]),
+      make([ s, -s,  s], [ s,  s,  s]),
+    );
+  }
+  return edges;
+}
+
+// Pick the edge whose midpoint, projected to NDC, is most "outside" the cube
+// in the direction we want for that axis label:
+//   - X / Z axes: bottom of screen (most negative NDC y)
+//   - Y axis:     side of screen (most extreme NDC x)
+// Tie-break by NDC z (closer to camera = less occluded).
+function pickAxisEdge(axis: "x" | "y" | "z", camera: THREE.Camera): Edge {
+  const edges = candidateEdges(axis);
+  let best = edges[0];
+  let bestScore = -Infinity;
+
+  for (const e of edges) {
+    _ndc.set(e.midpoint[0], e.midpoint[1], e.midpoint[2]).project(camera);
+    let score: number;
+    if (axis === "y") {
+      score = Math.abs(_ndc.x);
+    } else {
+      score = -_ndc.y;
+    }
+    // Tie-break: prefer edges closer to camera (smaller NDC z = nearer).
+    score -= 0.05 * _ndc.z;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = e;
+    }
+  }
+  return best;
+}
+
 // ─── Top-level scene wrapper ─────────────────────────────────────────────────
 
 interface SceneProps {
