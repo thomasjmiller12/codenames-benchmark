@@ -479,14 +479,16 @@ function AxisLabels({ animRef }: { animRef: React.MutableRefObject<ViewConfig> }
     // bottom-front-or-back edge depending on camera).
     if (costGroupRef.current) {
       const z = mix[2] * xMid[2];
-      const y = -s - 0.25; // always slightly below the bottom of the cube
+      // Pulled farther out (-s - 0.55 instead of -0.25) so tick values fit between
+      // the cube edge and the axis name without overlap.
+      const y = -s - 0.55;
       costGroupRef.current.position.set(0, y, z);
     }
 
     // Latency label: 2D rect at x=0; 3D at zEdge midpoint.
     if (latGroupRef.current) {
       const x = mix[2] * zMid[0];
-      latGroupRef.current.position.set(x, -s - 0.25, 0);
+      latGroupRef.current.position.set(x, -s - 0.55, 0);
     }
 
     // Elo label: vertical edge.
