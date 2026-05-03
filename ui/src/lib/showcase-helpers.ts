@@ -46,9 +46,13 @@ export function classifyTier(rating: number): {
 const PROVIDER_GRADIENTS: Record<string, string> = {
   Anthropic: "from-orange-500 via-amber-500 to-rose-600",
   OpenAI: "from-emerald-500 via-teal-500 to-cyan-600",
-  Google: "from-sky-500 via-blue-500 to-indigo-600",
-  Meta: "from-violet-500 via-purple-500 to-fuchsia-600",
+  Google: "from-pink-500 via-rose-500 to-fuchsia-600",
+  Meta: "from-blue-600 via-blue-700 to-indigo-700",
   Mistral: "from-rose-500 via-pink-500 to-red-600",
+  xAI: "from-lime-500 via-green-500 to-emerald-600",
+  Moonshot: "from-violet-400 via-purple-400 to-fuchsia-500",
+  DeepSeek: "from-sky-300 via-sky-400 to-cyan-500",
+  Qwen: "from-fuchsia-500 via-purple-500 to-indigo-600",
   Other: "from-zinc-500 to-zinc-700",
 };
 
@@ -57,12 +61,16 @@ export function providerGradient(provider: string): string {
 }
 
 const PROVIDER_HEX: Record<string, string> = {
-  Anthropic: "#f97316",
-  OpenAI: "#10b981",
-  Google: "#3b82f6",
-  Meta: "#a855f7",
-  Mistral: "#ef4444",
-  Other: "#737373",
+  Anthropic: "#f97316", // orange
+  OpenAI: "#10b981",    // emerald
+  Google: "#ec4899",    // pink (was blue — handed to Meta)
+  Meta: "#2563eb",      // Meta blue
+  Mistral: "#ef4444",   // red
+  xAI: "#84cc16",       // lime (was gray, too close to "Other")
+  Moonshot: "#a78bfa",  // lavender
+  DeepSeek: "#7dd3fc",  // light sky blue
+  Qwen: "#c084fc",      // fuchsia
+  Other: "#737373",     // zinc
 };
 
 export function providerHex(provider: string): string {

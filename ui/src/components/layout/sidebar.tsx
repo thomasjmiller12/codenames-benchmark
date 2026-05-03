@@ -10,6 +10,7 @@ import {
   ScatterChart as ScatterChartIcon,
   Lightbulb,
   BookOpen,
+  FlaskConical,
   Menu,
   X,
   PanelLeftClose,
@@ -23,7 +24,8 @@ const nav = [
   { href: "/head-to-head", label: "Head to Head", icon: Crosshair },
   { href: "/comparison", label: "Comparison", icon: ScatterChartIcon },
   { href: "/insights", label: "Insights", icon: Lightbulb },
-  { href: "/how-it-works", label: "How It Works", icon: BookOpen },
+  { href: "/lab", label: "Lab", icon: FlaskConical },
+  { href: "/methodology", label: "Methodology", icon: BookOpen },
 ];
 
 interface SidebarProps {
