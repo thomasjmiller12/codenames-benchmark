@@ -125,10 +125,10 @@ function frontierScore(p: LabPoint, mix: [number, number, number]): number {
   );
 }
 
-// ─── NDC axis-edge picker (used in Task 4) ──────────────────────────────────
+// ─── NDC axis-edge picker ──────────────────────────────────────────────────
 // Picks which of the 4 candidate cube edges parallel to a given axis should
 // host that axis's label/ticks, based on screen-space NDC projection. Robust
-// under arbitrary orbits — replaces the older sign(camera.x/z) heuristic.
+// under arbitrary orbits.
 
 type V3 = [number, number, number];
 interface Edge { start: V3; end: V3; midpoint: V3 }
@@ -501,7 +501,6 @@ function AxisLabels({ animRef }: { animRef: React.MutableRefObject<ViewConfig> }
       eloGroupRef.current.position.set(ex, 0, ez);
     }
 
-    // Opacity (unchanged from current).
     if (costLabelRef.current) costLabelRef.current.style.opacity = String(Math.min(1, mix[0] + mix[2]));
     if (latLabelRef.current) latLabelRef.current.style.opacity = String(Math.min(1, mix[1] + mix[2]));
     if (eloLabelRef.current) eloLabelRef.current.style.opacity = "1";
