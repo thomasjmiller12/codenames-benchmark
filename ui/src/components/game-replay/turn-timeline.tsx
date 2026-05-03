@@ -1,9 +1,9 @@
 "use client";
 
-import { Turn } from "@/lib/types";
+import { Turn, type Guess } from "@/lib/types";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { Check, X, Minus, Skull } from "lucide-react";
+import { Check, X, Minus, Skull, type LucideIcon } from "lucide-react";
 
 interface TurnTimelineProps {
   turns: Turn[];
@@ -11,7 +11,11 @@ interface TurnTimelineProps {
   currentGuessIndex: number;
 }
 
-const resultIcons: Record<string, { icon: React.ElementType; color: string }> = {
+// Keyed by the exhaustive Guess["result"] union so `resultIcons[guess.result]`
+// returns the value type directly (not `T | undefined`). With a `Record<string, ...>`
+// key + strict TS, the index access widens to `T | undefined` and the downstream
+// `Icon` capture narrows to `never`, breaking the `<Icon className=...>` JSX.
+const resultIcons: Record<Guess["result"], { icon: LucideIcon; color: string }> = {
   CORRECT: { icon: Check, color: "text-emerald-400" },
   WRONG_TEAM: { icon: X, color: "text-red-400" },
   NEUTRAL: { icon: Minus, color: "text-amber-400" },
