@@ -1,16 +1,18 @@
 "use client";
 
-import { Box, Layers3, ScatterChart, Cuboid } from "lucide-react";
-import type { Variant, View } from "./scene-data";
+import { BarChart, Box, Cuboid, Layers3, LineChart, ScatterChart } from "lucide-react";
+import type { Scale, Variant, View } from "./scene-data";
 
 interface Props {
   view: View;
   setView: (v: View) => void;
   variant: Variant;
   setVariant: (v: Variant) => void;
+  scale: Scale;
+  setScale: (s: Scale) => void;
 }
 
-export function LabControls({ view, setView, variant, setVariant }: Props) {
+export function LabControls({ view, setView, variant, setVariant, scale, setScale }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-lg border border-border/60 bg-card/40 p-3">
       <ButtonGroup label="View">
@@ -24,6 +26,13 @@ export function LabControls({ view, setView, variant, setVariant }: Props) {
       <ButtonGroup label="Variant">
         <Btn on={variant === "scatter"} onClick={() => setVariant("scatter")} icon={Box} label="Scatter" />
         <Btn on={variant === "manifold"} onClick={() => setVariant("manifold")} icon={Layers3} label="Frontier" />
+      </ButtonGroup>
+
+      <div className="hidden h-9 w-px bg-border/60 md:block" aria-hidden />
+
+      <ButtonGroup label="Scale">
+        <Btn on={scale === "log"} onClick={() => setScale("log")} icon={LineChart} label="Log" />
+        <Btn on={scale === "linear"} onClick={() => setScale("linear")} icon={BarChart} label="Linear" />
       </ButtonGroup>
     </div>
   );

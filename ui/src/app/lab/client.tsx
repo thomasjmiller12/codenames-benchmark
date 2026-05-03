@@ -12,6 +12,7 @@ import { SidePanel } from "./side-panel";
 import {
   build3DPoints,
   type Hover,
+  type Scale,
   type Variant,
   type View,
 } from "./scene-data";
@@ -28,6 +29,7 @@ const LabScene = dynamic(() => import("./scene").then((m) => m.LabScene), {
 export function LabClient({ models }: { models: Model[] }) {
   const [view, setView] = useState<View>("cost");
   const [variant, setVariant] = useState<Variant>("scatter");
+  const [scale, setScale] = useState<Scale>("log");
   const [hover, setHover] = useState<Hover | null>(null);
 
   const filtered = useMemo(
@@ -38,10 +40,9 @@ export function LabClient({ models }: { models: Model[] }) {
     [models]
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { points, axes } = useMemo(
-    () => build3DPoints(filtered, "log", "log"),
-    [filtered]
+    () => build3DPoints(filtered, scale, scale),
+    [filtered, scale]
   );
   const providers = useMemo(() => {
     const set = new Set(points.map((p) => p.provider));
@@ -74,7 +75,14 @@ export function LabClient({ models }: { models: Model[] }) {
     <div className="space-y-6">
       <Header />
 
-      <LabControls view={view} setView={setView} variant={variant} setVariant={setVariant} />
+      <LabControls
+        view={view}
+        setView={setView}
+        variant={variant}
+        setVariant={setVariant}
+        scale={scale}
+        setScale={setScale}
+      />
 
       <div className="overflow-hidden rounded-lg border border-border/60 bg-card/50">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 bg-background/40 px-4 py-2.5">
@@ -94,6 +102,7 @@ export function LabClient({ models }: { models: Model[] }) {
           <div className="lg:border-r lg:border-border/60">
             <LabScene
               points={points}
+              axes={axes}
               view={view}
               variant={variant}
               hover={hover}

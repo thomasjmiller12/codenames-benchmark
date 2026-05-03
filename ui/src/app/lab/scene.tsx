@@ -9,6 +9,7 @@ import { providerHex } from "@/lib/showcase-helpers";
 import {
   buildManifold,
   findCornerOccupants,
+  type AxisRanges,
   type CornerLabel,
   type Hover,
   type LabPoint,
@@ -121,6 +122,7 @@ function frontierScore(p: LabPoint, mix: [number, number, number]): number {
 
 interface SceneProps {
   points: LabPoint[];
+  axes: AxisRanges;
   view: View;
   variant: Variant;
   hover: Hover | null;
@@ -143,7 +145,15 @@ export function LabScene(props: SceneProps) {
   );
 }
 
-function SceneContents({ points, view, variant, hover, setHover }: SceneProps) {
+function SceneContents({
+  points,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  axes,
+  view,
+  variant,
+  hover,
+  setHover,
+}: SceneProps) {
   const animRef = useRef<ViewConfig>({ ...VIEW_CONFIGS.cost });
   const fromCfg = useRef<ViewConfig>({ ...VIEW_CONFIGS.cost });
   const toCfg = useRef<ViewConfig>({ ...VIEW_CONFIGS.cost });
