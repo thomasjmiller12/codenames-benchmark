@@ -2,6 +2,19 @@ import type { Model } from "@/lib/types";
 
 export type Variant = "scatter" | "manifold";
 export type View = "cost" | "latency" | "3d";
+export type Scale = "log" | "linear";
+
+export interface AxisRange {
+  min: number;        // raw min in data units
+  max: number;        // raw max in data units
+  scale: Scale;       // log or linear normalization
+}
+
+export interface AxisRanges {
+  cost: AxisRange;
+  latency: AxisRange;
+  elo: AxisRange;     // always linear; included for symmetry
+}
 
 // Discriminated hover state — drives the side panel and dot/corner highlighting.
 export type Hover =
@@ -53,21 +66,38 @@ export const CORNERS: CornerLabel[] = [
 
 // ─── Build normalized 3D points and 3D Pareto frontier ───────────────────────
 
-export function build3DPoints(models: Model[]): LabPoint[] {
-  if (models.length === 0) return [];
+export function build3DPoints(
+  models: Model[],
+  costScale: Scale = "log",
+  latencyScale: Scale = "log"
+): { points: LabPoint[]; axes: AxisRanges } {
+  if (models.length === 0) {
+    return {
+      points: [],
+      axes: {
+        cost: { min: 0, max: 1, scale: costScale },
+        latency: { min: 0, max: 1, scale: latencyScale },
+        elo: { min: 1500, max: 1500, scale: "linear" },
+      },
+    };
+  }
 
   const costs = models.map((m) => m.avg_cost_per_game);
   const lats = models.map((m) => m.avg_latency_ms);
   const elos = models.map((m) => m.solo_rating);
 
-  // Cost: log scale (typical 0.001 → 1.0 spans 3 orders of magnitude)
-  const logCost = (c: number) => Math.log10(Math.max(c, 1e-6));
-  const lcMin = Math.min(...costs.map(logCost));
-  const lcMax = Math.max(...costs.map(logCost));
-  // Latency: log scale (small models ~500ms, big ones ~30s)
-  const logLat = (l: number) => Math.log10(Math.max(l, 1));
-  const llMin = Math.min(...lats.map(logLat));
-  const llMax = Math.max(...lats.map(logLat));
+  // Cost: log scale (typical 0.001 → 1.0 spans 3 orders of magnitude) or linear
+  const costTransform = costScale === "log"
+    ? (c: number) => Math.log10(Math.max(c, 1e-6))
+    : (c: number) => c;
+  const lcMin = Math.min(...costs.map(costTransform));
+  const lcMax = Math.max(...costs.map(costTransform));
+  // Latency: log scale (small models ~500ms, big ones ~30s) or linear
+  const latTransform = latencyScale === "log"
+    ? (l: number) => Math.log10(Math.max(l, 1))
+    : (l: number) => l;
+  const llMin = Math.min(...lats.map(latTransform));
+  const llMax = Math.max(...lats.map(latTransform));
   const eMin = Math.min(...elos);
   const eMax = Math.max(...elos);
 
@@ -81,9 +111,9 @@ export function build3DPoints(models: Model[]): LabPoint[] {
     cost: m.avg_cost_per_game,
     latency: m.avg_latency_ms,
     elo: m.solo_rating,
-    nx: norm(logCost(m.avg_cost_per_game), lcMin, lcMax),
+    nx: norm(costTransform(m.avg_cost_per_game), lcMin, lcMax),
     ny: norm(m.solo_rating, eMin, eMax),
-    nz: norm(logLat(m.avg_latency_ms), llMin, llMax),
+    nz: norm(latTransform(m.avg_latency_ms), llMin, llMax),
     isFrontierCost: false,
     isFrontierLat: false,
     isFrontier3d: false,
@@ -113,7 +143,14 @@ export function build3DPoints(models: Model[]): LabPoint[] {
     a.isFrontier3d = !dominated;
   }
 
-  return enriched;
+  return {
+    points: enriched,
+    axes: {
+      cost: { min: Math.min(...costs), max: Math.max(...costs), scale: costScale },
+      latency: { min: Math.min(...lats), max: Math.max(...lats), scale: latencyScale },
+      elo: { min: eMin, max: eMax, scale: "linear" },
+    },
+  };
 }
 
 function markFrontier2D(

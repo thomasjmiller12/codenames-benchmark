@@ -12,7 +12,6 @@ import { SidePanel } from "./side-panel";
 import {
   build3DPoints,
   type Hover,
-  type LabPoint,
   type Variant,
   type View,
 } from "./scene-data";
@@ -39,7 +38,11 @@ export function LabClient({ models }: { models: Model[] }) {
     [models]
   );
 
-  const points: LabPoint[] = useMemo(() => build3DPoints(filtered), [filtered]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { points, axes } = useMemo(
+    () => build3DPoints(filtered, "log", "log"),
+    [filtered]
+  );
   const providers = useMemo(() => {
     const set = new Set(points.map((p) => p.provider));
     return Array.from(set).sort();
