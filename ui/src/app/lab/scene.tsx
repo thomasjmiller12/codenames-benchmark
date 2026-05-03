@@ -459,39 +459,42 @@ function AxisLabels({ animRef }: { animRef: React.MutableRefObject<ViewConfig> }
     const cfg = animRef.current;
     const mix = cfg.mix;
 
-    // Camera-side signs (XZ). Falls back to (-1, +1) when camera is at origin
-    // on that axis (only matters during transitions where mix[2] is small anyway).
-    const sx = camera.position.x >= 0 ? 1 : -1;
-    const sz = camera.position.z >= 0 ? 1 : -1;
+    // 3D-mode positions come from the picker; 2D positions stay on the rect.
+    const xEdge = pickAxisEdge("x", camera);
+    const zEdge = pickAxisEdge("z", camera);
+    const yEdge = pickAxisEdge("y", camera);
 
-    // Cost label: along X-axis, anchored to the bottom.
-    //   2D cost-view: at z=0 (cost-rect bottom)
-    //   3D view:      at z = sign(camera.z) * s (cube outer edge near camera)
+    const xMid = xEdge.midpoint;
+    const zMid = zEdge.midpoint;
+    const yMid = yEdge.midpoint;
+
+    // Cost label: 2D rect at z=0; 3D at xEdge midpoint (which lives at the cube's
+    // bottom-front-or-back edge depending on camera).
     if (costGroupRef.current) {
-      costGroupRef.current.position.set(0, -s - 0.25, mix[2] * sz * s);
+      const z = mix[2] * xMid[2];
+      const y = -s - 0.25; // always slightly below the bottom of the cube
+      costGroupRef.current.position.set(0, y, z);
     }
 
-    // Latency label: along Z-axis, anchored to the bottom.
-    //   2D lat-view: at x=0 (lat-rect bottom)
-    //   3D view:     at x = sign(camera.x) * s
+    // Latency label: 2D rect at x=0; 3D at zEdge midpoint.
     if (latGroupRef.current) {
-      latGroupRef.current.position.set(mix[2] * sx * s, -s - 0.25, 0);
+      const x = mix[2] * zMid[0];
+      latGroupRef.current.position.set(x, -s - 0.25, 0);
     }
 
-    // Elo label: vertical, on a Y-axis edge.
-    //   2D cost-view: x=-s, z=0 (left side of cost-rect)
-    //   2D lat-view:  x=0, z=-s (left side of lat-rect from latency camera)
-    //   3D view:      at the cube corner closest to the camera in XZ
+    // Elo label: vertical edge.
+    //   2D cost-view: x=-s, z=0
+    //   2D lat-view:  x=0, z=-s
+    //   3D view:      yEdge midpoint (corner closest to camera)
     if (eloGroupRef.current) {
-      const ex = mix[0] * -s + mix[2] * sx * s;
-      const ez = mix[1] * -s + mix[2] * sz * s;
+      const ex = mix[0] * -s + mix[2] * yMid[0];
+      const ez = mix[1] * -s + mix[2] * yMid[2];
       eloGroupRef.current.position.set(ex, 0, ez);
     }
 
-    // Visibility: label fades with its axis's relevance to the current view.
+    // Opacity (unchanged from current).
     if (costLabelRef.current) costLabelRef.current.style.opacity = String(Math.min(1, mix[0] + mix[2]));
     if (latLabelRef.current) latLabelRef.current.style.opacity = String(Math.min(1, mix[1] + mix[2]));
-    // Elo is always relevant (Y axis is shared by all three views).
     if (eloLabelRef.current) eloLabelRef.current.style.opacity = "1";
   });
 
