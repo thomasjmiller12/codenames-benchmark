@@ -211,7 +211,7 @@ interface SceneProps {
   setHover: (h: Hover | null) => void;
 }
 
-export function LabScene(props: SceneProps) {
+export function ComparisonScene(props: SceneProps) {
   return (
     <div className="relative h-[640px] w-full bg-gradient-to-b from-[#0b0b10] to-[#050507]">
       <Canvas
@@ -852,20 +852,25 @@ function FrontierCurve({
       .sort((a, b) => (mode === 0 ? a.cost - b.cost : a.latency - b.latency));
   }, [points, mode]);
 
-  const lineRef = useRef<THREE.Line>(null);
-  const matRef = useRef<THREE.LineBasicMaterial>(null);
-
-  const geometry = useMemo(() => {
+  // Build a THREE.Line imperatively and render it via <primitive>. We can't
+  // use the JSX <line> intrinsic because TypeScript resolves it to SVG's
+  // <line> (Ref<SVGLineElement>) instead of r3f's THREE.Line element, which
+  // makes strict production TS fail to compile.
+  const lineObj = useMemo(() => {
     const geo = new THREE.BufferGeometry();
     const positions = new Float32Array(Math.max(sorted.length, 2) * 3);
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    return geo;
+    const mat = new THREE.LineBasicMaterial({
+      color: "#fbbf24",
+      transparent: true,
+      opacity: 0,
+    });
+    return new THREE.Line(geo, mat);
   }, [sorted.length]);
 
   useFrame(() => {
-    if (!lineRef.current || !matRef.current) return;
     const cfg = animRef.current;
-    const attr = geometry.attributes.position as THREE.BufferAttribute;
+    const attr = lineObj.geometry.attributes.position as THREE.BufferAttribute;
     if (sorted.length >= 2) {
       for (let i = 0; i < sorted.length; i++) {
         const [px, py, pz] = pointPosition(sorted[i], cfg);
@@ -874,17 +879,13 @@ function FrontierCurve({
       // eslint-disable-next-line react-hooks/immutability -- Three.js BufferAttribute upload trigger
       attr.needsUpdate = true;
     }
-    matRef.current.opacity = cfg.mix[mode] * 0.7;
+    // eslint-disable-next-line react-hooks/immutability -- Three.js material runtime mutation
+    (lineObj.material as THREE.LineBasicMaterial).opacity = cfg.mix[mode] * 0.7;
   });
 
   if (sorted.length < 2) return null;
 
-  return (
-    <line ref={lineRef as unknown as React.Ref<THREE.Line>}>
-      <primitive object={geometry} attach="geometry" />
-      <lineBasicMaterial ref={matRef} color="#fbbf24" transparent opacity={0} linewidth={2} />
-    </line>
-  );
+  return <primitive object={lineObj} />;
 }
 
 // ─── Manifold surface ────────────────────────────────────────────────────────
