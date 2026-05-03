@@ -15,7 +15,7 @@ export function niceLogTicks(min: number, max: number): number[] {
 
 /** Round-number ticks within [min, max], approximately `count` of them. */
 export function niceLinearTicks(min: number, max: number, count = 5): number[] {
-  if (max <= min) return [min];
+  if (max <= min) return [];
   const range = max - min;
   const rawStep = range / Math.max(1, count - 1);
   const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
@@ -49,9 +49,10 @@ export function tickFraction(value: number, min: number, max: number, scale: Sca
 
 // Formatters tuned for short tick labels.
 export function formatCostTick(v: number): string {
-  if (v < 0.01) return `$${v.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}`;
-  if (v < 1) return `$${v.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}`;
-  if (v < 10) return `$${v.toFixed(1)}`;
+  const trim = (s: string) => s.replace(/\.?0+$/, "");
+  if (v < 0.01) return `$${trim(v.toFixed(3))}`;
+  if (v < 1)    return `$${trim(v.toFixed(2))}`;
+  if (v < 10)   return `$${trim(v.toFixed(1))}`;
   return `$${Math.round(v)}`;
 }
 
