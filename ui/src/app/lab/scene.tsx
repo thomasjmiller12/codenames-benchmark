@@ -479,25 +479,29 @@ function AxisLabels({ animRef }: { animRef: React.MutableRefObject<ViewConfig> }
     // bottom-front-or-back edge depending on camera).
     if (costGroupRef.current) {
       const z = mix[2] * xMid[2];
-      // Pulled farther out (-s - 0.55 instead of -0.25) so tick values fit between
-      // the cube edge and the axis name without overlap.
-      const y = -s - 0.55;
+      // Sit just below the tick row (which sits at -s - 0.20). Anything below
+      // ~-s - 0.4 starts being clipped by the camera frustum in 2D mode.
+      const y = -s - 0.42;
       costGroupRef.current.position.set(0, y, z);
     }
 
     // Latency label: 2D rect at x=0; 3D at zEdge midpoint.
     if (latGroupRef.current) {
       const x = mix[2] * zMid[0];
-      latGroupRef.current.position.set(x, -s - 0.55, 0);
+      latGroupRef.current.position.set(x, -s - 0.42, 0);
     }
 
-    // Elo label: vertical edge.
-    //   2D cost-view: x=-s, z=0
-    //   2D lat-view:  x=0, z=-s
-    //   3D view:      yEdge midpoint (corner closest to camera)
+    // Elo label: vertical edge, pushed outward in XZ so it doesn't sit ON the cube edge.
+    //   2D cost-view: x=-s, z=0 → pushed to (-s - 0.25, 0, 0)
+    //   2D lat-view:  x=0, z=-s → pushed to (0, 0, -s - 0.25)
+    //   3D view:      yEdge midpoint pushed outward along its XZ direction
     if (eloGroupRef.current) {
-      const ex = mix[0] * -s + mix[2] * yMid[0];
-      const ez = mix[1] * -s + mix[2] * yMid[2];
+      const baseX = mix[0] * -s + mix[2] * yMid[0];
+      const baseZ = mix[1] * -s + mix[2] * yMid[2];
+      const len = Math.sqrt(baseX * baseX + baseZ * baseZ) || 1;
+      const offsetMag = 0.25;
+      const ex = baseX + (baseX / len) * offsetMag;
+      const ez = baseZ + (baseZ / len) * offsetMag;
       eloGroupRef.current.position.set(ex, 0, ez);
     }
 
@@ -535,7 +539,7 @@ function AxisLabels({ animRef }: { animRef: React.MutableRefObject<ViewConfig> }
           <span
             ref={eloLabelRef}
             className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/60 whitespace-nowrap"
-            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+            style={{ writingMode: "vertical-rl" }}
           >
             Elo
           </span>
@@ -647,8 +651,8 @@ function Tick({
     // Outward offset so the label sits beyond the cube.
     let ox = 0, oy = 0, oz = 0;
     if (axis === "cost" || axis === "latency") {
-      // Below the bottom face.
-      oy = -0.32;
+      // Below the bottom face, leaving room above for the axis-name label.
+      oy = -0.20;
     } else {
       // Outward in XZ from the cube center.
       const len = Math.sqrt(edge.midpoint[0] ** 2 + edge.midpoint[2] ** 2) || 1;

@@ -1,15 +1,33 @@
 import type { Scale } from "./scene-data";
 
-/** Major orders of magnitude that fall within [min, max], inclusive. */
+/**
+ * Log-scale ticks within [min, max]. Major orders (10^k) always; if the data
+ * spans less than ~2.5 decades, also include subticks at 2×10^k and 5×10^k
+ * so sparse ranges (e.g. 0.01 → 0.58) get readable label density without
+ * crowding wide ranges.
+ */
 export function niceLogTicks(min: number, max: number): number[] {
   if (min <= 0 || max <= 0 || max <= min) return [];
   const ticks: number[] = [];
   const startK = Math.floor(Math.log10(min));
   const endK = Math.ceil(Math.log10(max));
+
   for (let k = startK; k <= endK; k++) {
     const v = Math.pow(10, k);
     if (v >= min * 0.99 && v <= max * 1.01) ticks.push(v);
   }
+
+  const decades = Math.log10(max) - Math.log10(min);
+  if (decades < 2.5) {
+    for (let k = startK; k <= endK; k++) {
+      for (const sub of [2, 5]) {
+        const v = sub * Math.pow(10, k);
+        if (v >= min * 0.99 && v <= max * 1.01) ticks.push(v);
+      }
+    }
+    ticks.sort((a, b) => a - b);
+  }
+
   return ticks;
 }
 
