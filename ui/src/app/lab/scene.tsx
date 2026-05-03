@@ -16,6 +16,13 @@ import {
   type Variant,
   type View,
 } from "./scene-data";
+import {
+  pickTicks,
+  tickFraction,
+  formatCostTick,
+  formatLatencyTick,
+  formatEloTick,
+} from "./ticks";
 
 // ─── Geometry constants ──────────────────────────────────────────────────────
 
@@ -222,7 +229,6 @@ export function LabScene(props: SceneProps) {
 
 function SceneContents({
   points,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   axes,
   view,
   variant,
@@ -341,6 +347,7 @@ function SceneContents({
         setHover={setHover}
       />
 
+      <AxisTicks axes={axes} animRef={animRef} />
       <AxisLabels animRef={animRef} />
     </>
   );
@@ -534,6 +541,160 @@ function AxisLabels({ animRef }: { animRef: React.MutableRefObject<ViewConfig> }
         </Html>
       </group>
     </>
+  );
+}
+
+function AxisTicks({
+  axes,
+  animRef,
+}: {
+  axes: AxisRanges;
+  animRef: React.MutableRefObject<ViewConfig>;
+}) {
+  const { camera } = useThree();
+
+  const costTicks = useMemo(
+    () => pickTicks(axes.cost.min, axes.cost.max, axes.cost.scale),
+    [axes.cost.min, axes.cost.max, axes.cost.scale]
+  );
+  const latTicks = useMemo(
+    () => pickTicks(axes.latency.min, axes.latency.max, axes.latency.scale),
+    [axes.latency.min, axes.latency.max, axes.latency.scale]
+  );
+  const eloTicks = useMemo(
+    () => pickTicks(axes.elo.min, axes.elo.max, axes.elo.scale),
+    [axes.elo.min, axes.elo.max, axes.elo.scale]
+  );
+
+  return (
+    <>
+      {costTicks.map((v) => (
+        <Tick
+          key={`cost-${v}`}
+          value={v}
+          axis="cost"
+          axes={axes}
+          animRef={animRef}
+          camera={camera}
+          formatter={formatCostTick}
+        />
+      ))}
+      {latTicks.map((v) => (
+        <Tick
+          key={`lat-${v}`}
+          value={v}
+          axis="latency"
+          axes={axes}
+          animRef={animRef}
+          camera={camera}
+          formatter={formatLatencyTick}
+        />
+      ))}
+      {eloTicks.map((v) => (
+        <Tick
+          key={`elo-${v}`}
+          value={v}
+          axis="elo"
+          axes={axes}
+          animRef={animRef}
+          camera={camera}
+          formatter={formatEloTick}
+        />
+      ))}
+    </>
+  );
+}
+
+function Tick({
+  value,
+  axis,
+  axes,
+  animRef,
+  camera,
+  formatter,
+}: {
+  value: number;
+  axis: "cost" | "latency" | "elo";
+  axes: AxisRanges;
+  animRef: React.MutableRefObject<ViewConfig>;
+  camera: THREE.Camera;
+  formatter: (v: number) => string;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
+
+  const range = axis === "cost" ? axes.cost : axis === "latency" ? axes.latency : axes.elo;
+  const fraction = tickFraction(value, range.min, range.max, range.scale);
+
+  useFrame(() => {
+    if (!groupRef.current) return;
+    const cfg = animRef.current;
+    const mix = cfg.mix;
+    const s = SCALE;
+
+    // Pick the camera-facing edge for this axis.
+    const pickerAxis = axis === "cost" ? "x" : axis === "latency" ? "z" : "y";
+    const edge = pickAxisEdge(pickerAxis, camera);
+
+    // Tick position = lerp along the edge by fraction (0..1) using SAME normalization
+    // as the points: data fraction → world position.
+    const t = fraction;
+    const ex = edge.start[0] + (edge.end[0] - edge.start[0]) * t;
+    const ey = edge.start[1] + (edge.end[1] - edge.start[1]) * t;
+    const ez = edge.start[2] + (edge.end[2] - edge.start[2]) * t;
+
+    // Outward offset so the label sits beyond the cube.
+    let ox = 0, oy = 0, oz = 0;
+    if (axis === "cost" || axis === "latency") {
+      // Below the bottom face.
+      oy = -0.32;
+    } else {
+      // Outward in XZ from the cube center.
+      const len = Math.sqrt(edge.midpoint[0] ** 2 + edge.midpoint[2] ** 2) || 1;
+      ox = (edge.midpoint[0] / len) * 0.32;
+      oz = (edge.midpoint[2] / len) * 0.32;
+    }
+
+    // Blend with 2D-rect positions (Z=0 for cost, X=0 for lat, x=-s|z=-s for elo).
+    let wx = ex, wy = ey, wz = ez;
+    if (axis === "cost") {
+      wz = mix[2] * ez; // 0 in 2D, edge.z in 3D
+      wy = -SCALE; // always at bottom
+    } else if (axis === "latency") {
+      wx = mix[2] * ex;
+      wy = -SCALE;
+    } else {
+      // Elo: x and z blend across views
+      wx = mix[0] * -s + mix[2] * edge.midpoint[0];
+      wz = mix[1] * -s + mix[2] * edge.midpoint[2];
+      wy = ey; // tick's y position along the vertical edge
+    }
+
+    groupRef.current.position.set(wx + ox, wy + oy, wz + oz);
+
+    // Visibility: fade with view mix (cost ticks visible in cost-view + 3d, etc.).
+    if (labelRef.current) {
+      const opacity =
+        axis === "cost"
+          ? mix[0] + mix[2]
+          : axis === "latency"
+          ? mix[1] + mix[2]
+          : 1;
+      labelRef.current.style.opacity = String(Math.min(1, opacity * 0.85));
+    }
+  });
+
+  return (
+    <group ref={groupRef}>
+      <Html center distanceFactor={8} occlude={false} pointerEvents="none">
+        <span
+          ref={labelRef}
+          className="font-mono text-[9px] tabular-nums text-white/55 whitespace-nowrap"
+        >
+          {formatter(value)}
+        </span>
+      </Html>
+    </group>
   );
 }
 
